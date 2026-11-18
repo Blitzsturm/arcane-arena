@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0b0e14"/>
+    </radialGradient>
+    <linearGradient id="amberGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fcd34d"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="arcaneGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bgGrad)"/>
+  <circle cx="256" cy="256" r="184" fill="none" stroke="url(#amberGrad)" stroke-width="14" opacity="0.9"/>
+  <circle cx="256" cy="256" r="144" fill="none" stroke="url(#arcaneGrad)" stroke-width="6" stroke-dasharray="18 12" opacity="0.75"/>
+  <!-- Crossed Twin-Stick Arcane Blades / Emblem -->
+  <path d="M256 96 L292 220 L416 256 L292 292 L256 416 L220 292 L96 256 L220 220 Z" fill="url(#arcaneGrad)" opacity="0.25"/>
+  <path d="M256 118 L280 232 L394 256 L280 280 L256 394 L232 280 L118 256 L232 232 Z" fill="none" stroke="url(#amberGrad)" stroke-width="10" stroke-linejoin="round"/>
+  <circle cx="256" cy="256" r="34" fill="url(#amberGrad)"/>
+  <circle cx="256" cy="256" r="16" fill="#0b0e14"/>
+</svg>

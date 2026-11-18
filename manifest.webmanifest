@@ -1,0 +1,19 @@
+{
+  "name": "Arcane Arena — Twin-Stick Fantasy Survival",
+  "short_name": "Arcane Arena",
+  "description": "Browser Twin-Stick Arena Roguelite",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0e14",
+  "theme_color": "#0b0e14",
+  "icons": [
+    {
+      "src": "./assets/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
