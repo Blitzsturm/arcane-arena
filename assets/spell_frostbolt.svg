@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-48 -32 96 64" width="128" height="86">
+  <defs>
+    <linearGradient id="iceCrystal" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0284c7"/>
+      <stop offset="55%" stop-color="#7dd3fc"/>
+      <stop offset="100%" stop-color="#ffffff"/>
+    </linearGradient>
+    <radialGradient id="frostGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.65"/>
+      <stop offset="100%" stop-color="#0284c7" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Chilling Frost Aura -->
+  <circle cx="8" cy="0" r="28" fill="url(#frostGlow)"/>
+
+  <!-- Trailing Frost Vapor & Ice Shards (-X) -->
+  <polygon points="-42,-6 -18,-3 -24,-12" fill="#7dd3fc" fill-opacity="0.75"/>
+  <polygon points="-38,7 -16,3 -22,12" fill="#38bdf8" fill-opacity="0.75"/>
+
+  <!-- Crystalline Ice Lance (+X) -->
+  <polygon points="-24,0 2,-13 42,0 2,13" fill="url(#iceCrystal)" stroke="#0369a1" stroke-width="1.8" stroke-linejoin="round"/>
+  <!-- Faceted Inner Ice Prism -->
+  <polygon points="-12,0 6,-6 30,0 6,6" fill="#ffffff" fill-opacity="0.85"/>
+  <line x1="-20" y1="0" x2="36" y2="0" stroke="#e0f2fe" stroke-width="2"/>
+</svg>

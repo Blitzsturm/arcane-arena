@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <radialGradient id="sanctumAura" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.28"/>
+      <stop offset="45%" stop-color="#6366f1" stop-opacity="0.16"/>
+      <stop offset="85%" stop-color="#f59e0b" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#090d15" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="coreGem" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#e0f2fe"/>
+      <stop offset="50%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#1e3a8a"/>
+    </radialGradient>
+  </defs>
+  <!-- Ambient Radial Glow -->
+  <circle cx="200" cy="200" r="196" fill="url(#sanctumAura)"/>
+  <!-- Outer Stepped Stone Ring -->
+  <circle cx="200" cy="200" r="184" fill="#0d1322" stroke="#b45309" stroke-width="3" opacity="0.9"/>
+  <circle cx="200" cy="200" r="172" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="14 8" opacity="0.75"/>
+  <circle cx="200" cy="200" r="156" fill="#11182b" stroke="#38bdf8" stroke-width="2" opacity="0.85"/>
+  <!-- 8-Pointed Sacred Geometry Star (Two Interlocking Squares) -->
+  <g opacity="0.85">
+    <rect x="90" y="90" width="220" height="220" fill="#0f172a" stroke="#f59e0b" stroke-width="2"/>
+    <rect x="90" y="90" width="220" height="220" fill="#0f172a" stroke="#38bdf8" stroke-width="2" transform="rotate(45 200 200)"/>
+  </g>
+  <!-- Cardinal & Ordinal Conduit Spokes -->
+  <g stroke="#38bdf8" stroke-width="2" opacity="0.65">
+    <line x1="200" y1="16" x2="200" y2="384"/>
+    <line x1="16" y1="200" x2="384" y2="200"/>
+    <line x1="70" y1="70" x2="330" y2="330" stroke="#f59e0b"/>
+    <line x1="330" y1="70" x2="70" y2="330" stroke="#f59e0b"/>
+  </g>
+  <!-- Inner Astrolabe Ring -->
+  <circle cx="200" cy="200" r="108" fill="#0b111e" stroke="#f59e0b" stroke-width="2.5"/>
+  <circle cx="200" cy="200" r="94" fill="none" stroke="#7dd3fc" stroke-width="1.5" stroke-dasharray="6 6"/>
+  <!-- 8 Perimeter Rune Nodes -->
+  <g fill="#0f172a" stroke="#fbbf24" stroke-width="2">
+    <circle cx="200" cy="36" r="9"/><circle cx="200" cy="364" r="9"/>
+    <circle cx="36" cy="200" r="9"/><circle cx="364" cy="200" r="9"/>
+    <circle cx="84" cy="84" r="8"/><circle cx="316" cy="84" r="8"/>
+    <circle cx="84" cy="316" r="8"/><circle cx="316" cy="316" r="8"/>
+  </g>
+  <g fill="#38bdf8">
+    <circle cx="200" cy="36" r="4"/><circle cx="200" cy="364" r="4"/>
+    <circle cx="36" cy="200" r="4"/><circle cx="364" cy="200" r="4"/>
+  </g>
+  <!-- Central Compass Rose & Nexus Core -->
+  <polygon points="200,115 220,180 285,200 220,220 200,285 180,220 115,200 180,180" fill="#1e1b4b" stroke="#fbbf24" stroke-width="2"/>
+  <polygon points="200,135 215,185 265,200 215,215 200,265 185,215 135,200 185,185" fill="#172554" stroke="#38bdf8" stroke-width="1.5" transform="rotate(45 200 200)"/>
+  <circle cx="200" cy="200" r="26" fill="url(#coreGem)" stroke="#fef08a" stroke-width="2.5"/>
+  <circle cx="200" cy="200" r="10" fill="#ffffff" opacity="0.85"/>
+</svg>

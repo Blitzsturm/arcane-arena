@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-64 -64 128 128" width="256" height="256">
+  <defs>
+    <radialGradient id="singVoid" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#020617"/>
+      <stop offset="38%" stop-color="#1e1b4b"/>
+      <stop offset="68%" stop-color="#0284c7" stop-opacity="0.75"/>
+      <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Gravitational Accretion Disk -->
+  <circle cx="0" cy="0" r="58" fill="url(#singVoid)"/>
+
+  <!-- Swirling Spiral Arms -->
+  <g fill="none" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" stroke-opacity="0.8">
+    <path d="M 0 -18 C 26 -22, 46 -4, 42 24 C 38 42, 18 52, -6 48"/>
+    <path d="M 0 18 C -26 22, -46 4, -42 -24 C -38 -42, -18 -52, 6 -48"/>
+  </g>
+  <g fill="none" stroke="#c084fc" stroke-width="2.2" stroke-linecap="round" stroke-opacity="0.75">
+    <path d="M -18 0 C -22 -26, -4 -46, 24 -42 C 42 -38, 52 -18, 48 6"/>
+    <path d="M 18 0 C 22 26, 4 46, -24 42 C -42 38, -52 18, -48 -6"/>
+  </g>
+
+  <!-- Runic Containment Ring -->
+  <circle cx="0" cy="0" r="34" fill="none" stroke="#7dd3fc" stroke-width="1.5" stroke-dasharray="6 6"/>
+
+  <!-- Event Horizon Black Hole Core -->
+  <circle cx="0" cy="0" r="15" fill="#020617" stroke="#e0f2fe" stroke-width="2.5"/>
+</svg>

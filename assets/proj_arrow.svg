@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-48 -24 96 48" width="128" height="64">
+  <defs>
+    <linearGradient id="arrTip" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#d1fae5"/>
+    </linearGradient>
+    <linearGradient id="arrWake" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#34d399" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#34d399" stop-opacity="0.55"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Wind Stream Wake -->
+  <path d="M -44 -5 L 18 -2 L 18 2 L -44 5 Z" fill="url(#arrWake)"/>
+
+  <!-- Emerald Fletching Feathers (-X Tail) -->
+  <polygon points="-34,0 -42,-8 -24,-8 -18,0" fill="#10b981" stroke="#064e3b" stroke-width="1.2" stroke-linejoin="round"/>
+  <polygon points="-34,0 -42,8 -24,8 -18,0" fill="#059669" stroke="#064e3b" stroke-width="1.2" stroke-linejoin="round"/>
+
+  <!-- Wooden Arrow Shaft -->
+  <line x1="-36" y1="0" x2="24" y2="0" stroke="#fde68a" stroke-width="3.2" stroke-linecap="round"/>
+
+  <!-- Barbed Sylvan Broadhead (+X Point) -->
+  <polygon points="16,-8 42,0 16,8 22,0" fill="url(#arrTip)" stroke="#065f46" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

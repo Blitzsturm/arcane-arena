@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="slateA" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#192132"/>
+      <stop offset="100%" stop-color="#111726"/>
+    </linearGradient>
+    <linearGradient id="slateB" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1c2538"/>
+      <stop offset="100%" stop-color="#121826"/>
+    </linearGradient>
+  </defs>
+  <!-- Deep Mortar Base -->
+  <rect width="100" height="100" fill="#090d15"/>
+  <!-- Top-Left Slab (58x46) -->
+  <rect x="2" y="2" width="56" height="46" rx="2" fill="url(#slateA)" stroke="#263248" stroke-width="1"/>
+  <path d="M 4 47 L 4 4 L 56 4" fill="none" stroke="#334155" stroke-width="1" opacity="0.55"/>
+  <!-- Top-Right Slab (38x46) -->
+  <rect x="60" y="2" width="38" height="46" rx="2" fill="url(#slateB)" stroke="#243044" stroke-width="1"/>
+  <path d="M 62 47 L 62 4 L 96 4" fill="none" stroke="#334155" stroke-width="1" opacity="0.45"/>
+  <!-- Bottom-Left Slab (38x48) -->
+  <rect x="2" y="50" width="38" height="48" rx="2" fill="url(#slateB)" stroke="#243044" stroke-width="1"/>
+  <path d="M 4 96 L 4 52 L 38 52" fill="none" stroke="#334155" stroke-width="1" opacity="0.45"/>
+  <!-- Bottom-Right Slab (56x48) -->
+  <rect x="42" y="50" width="56" height="48" rx="2" fill="url(#slateA)" stroke="#263248" stroke-width="1"/>
+  <path d="M 44 96 L 44 52 L 96 52" fill="none" stroke="#334155" stroke-width="1" opacity="0.55"/>
+  <!-- Subtle Chisel Marks & Corner Rivets -->
+  <path d="M 18 16 L 27 22 M 72 68 L 83 71" stroke="#0b0f19" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M 18 17 L 27 23 M 72 69 L 83 72" stroke="#334155" stroke-width="0.7" stroke-linecap="round" opacity="0.6"/>
+  <circle cx="59" cy="49" r="2" fill="#475569" opacity="0.5"/>
+  <circle cx="41" cy="49" r="2" fill="#475569" opacity="0.5"/>
+</svg>

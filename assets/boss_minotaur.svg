@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-64 -64 128 128" width="256" height="256">
+  <defs>
+    <radialGradient id="minoAura" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#ef4444" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="minoFur" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7f1d1d"/>
+      <stop offset="55%" stop-color="#450a0a"/>
+      <stop offset="100%" stop-color="#290505"/>
+    </linearGradient>
+    <linearGradient id="minoIron" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#64748b"/>
+      <stop offset="50%" stop-color="#e2e8f0"/>
+      <stop offset="100%" stop-color="#dc2626"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Boss Threat Aura -->
+  <circle cx="0" cy="0" r="58" fill="url(#minoAura)"/>
+  <circle cx="0" cy="0" r="46" fill="none" stroke="#ef4444" stroke-width="1.8" stroke-dasharray="10 6" stroke-opacity="0.65"/>
+
+  <!-- Double-Bladed Executioner Greataxe (+Y side extending +X) -->
+  <g id="minotaur-axe">
+    <line x1="-22" y1="30" x2="48" y2="26" stroke="#78350f" stroke-width="6" stroke-linecap="round"/>
+    <!-- Upper & Lower Crescent Axe Blades -->
+    <path d="M 24 26 C 28 6, 46 6, 54 26 Z" fill="url(#minoIron)" stroke="#1e293b" stroke-width="2.2"/>
+    <path d="M 24 26 C 28 48, 46 48, 54 26 Z" fill="url(#minoIron)" stroke="#1e293b" stroke-width="2.2"/>
+    <circle cx="39" cy="26" r="4.5" fill="#fbbf24" stroke="#451a03" stroke-width="1.5"/>
+  </g>
+
+  <!-- Spiked Iron Pauldrons & Muscular Torso -->
+  <ellipse cx="-4" cy="-28" rx="18" ry="14" transform="rotate(-15 -4 -28)" fill="#334155" stroke="#0f172a" stroke-width="2.8"/>
+  <polygon points="-8,-38 -2,-48 4,-36" fill="#cbd5e1" stroke="#0f172a" stroke-width="1.5"/>
+  <ellipse cx="-4" cy="28" rx="18" ry="14" transform="rotate(15 -4 28)" fill="#334155" stroke="#0f172a" stroke-width="2.8"/>
+  <polygon points="-8,38 -2,48 4,36" fill="#cbd5e1" stroke="#0f172a" stroke-width="1.5"/>
+
+  <ellipse cx="-2" cy="0" rx="24" ry="28" fill="url(#minoFur)" stroke="#1e0505" stroke-width="3"/>
+  <!-- Bronze Chest Harness -->
+  <line x1="-18" y1="-20" x2="16" y2="20" stroke="#d97706" stroke-width="4.5"/>
+  <line x1="-18" y1="20" x2="16" y2="-20" stroke="#d97706" stroke-width="4.5"/>
+  <circle cx="0" cy="0" r="8" fill="#f59e0b" stroke="#451a03" stroke-width="2"/>
+
+  <!-- Minotaur Head, Snout, Golden Nose Ring & Swept Iron Horns (+X) -->
+  <g id="minotaur-head">
+    <!-- Massive Forward-Charging Horns -->
+    <path d="M 2 -14 C 10 -36, 32 -38, 48 -20 C 32 -24, 16 -22, 10 -10 Z" fill="#e2e8f0" stroke="#1e293b" stroke-width="2.4" stroke-linejoin="round"/>
+    <path d="M 2 14 C 10 36, 32 38, 48 20 C 32 24, 16 22, 10 10 Z" fill="#e2e8f0" stroke="#1e293b" stroke-width="2.4" stroke-linejoin="round"/>
+    <!-- Bull Skull & Snout -->
+    <path d="M -12 -14 L 18 -11 L 28 -7 L 28 7 L 18 11 L -12 14 Z" fill="url(#minoFur)" stroke="#0f172a" stroke-width="2.5" stroke-linejoin="round"/>
+    <!-- Brass Nose Ring (+X) -->
+    <circle cx="31" cy="0" r="6" fill="none" stroke="#fbbf24" stroke-width="3"/>
+    <!-- Blazing Crimson Boss Eyes -->
+    <polygon points="12,-10 20,-6 12,-3" fill="#ef4444"/>
+    <polygon points="12,10 20,6 12,3" fill="#ef4444"/>
+  </g>
+</svg>

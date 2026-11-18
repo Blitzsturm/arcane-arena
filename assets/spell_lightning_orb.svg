@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-48 -48 96 96" width="128" height="128">
+  <defs>
+    <radialGradient id="voltCore" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="45%" stop-color="#f0abfc"/>
+      <stop offset="80%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#6b21a8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Outer Plasma Glow -->
+  <circle cx="0" cy="0" r="36" fill="url(#voltCore)"/>
+
+  <!-- Crackling Jagged Electric Arcs -->
+  <g fill="none" stroke="#f5d0fe" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="-28,-8 -14,-18 -4,-10 10,-26 24,-12"/>
+    <polyline points="-24,14 -8,24 4,12 18,26 30,8"/>
+    <polyline points="-18,-24 -6,-8 -22,4 -10,18"/>
+    <polyline points="16,-22 8,-6 26,2 14,18"/>
+  </g>
+
+  <!-- High-Voltage Core Sphere -->
+  <circle cx="0" cy="0" r="12" fill="#ffffff" stroke="#c084fc" stroke-width="3"/>
+</svg>

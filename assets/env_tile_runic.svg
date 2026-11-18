@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="runeSlab" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#182235"/>
+      <stop offset="100%" stop-color="#101726"/>
+    </linearGradient>
+    <linearGradient id="leyGlow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.85"/>
+      <stop offset="50%" stop-color="#7dd3fc" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.85"/>
+    </linearGradient>
+  </defs>
+  <rect width="100" height="100" fill="#090d15"/>
+  <!-- Left & Right Carved Curbs -->
+  <rect x="2" y="2" width="34" height="46" rx="2" fill="url(#runeSlab)" stroke="#26334d" stroke-width="1"/>
+  <rect x="2" y="50" width="34" height="48" rx="2" fill="url(#runeSlab)" stroke="#26334d" stroke-width="1"/>
+  <rect x="64" y="2" width="34" height="46" rx="2" fill="url(#runeSlab)" stroke="#26334d" stroke-width="1"/>
+  <rect x="64" y="50" width="34" height="48" rx="2" fill="url(#runeSlab)" stroke="#26334d" stroke-width="1"/>
+  <!-- Central Leyline Conduit Channel (X: 38 to 62) -->
+  <rect x="38" y="0" width="24" height="100" fill="#0b1322" stroke="#b45309" stroke-width="1.2" opacity="0.85"/>
+  <!-- Gold Trim Rails -->
+  <line x1="40" y1="0" x2="40" y2="100" stroke="#f59e0b" stroke-width="1" opacity="0.55"/>
+  <line x1="60" y1="0" x2="60" y2="100" stroke="#f59e0b" stroke-width="1" opacity="0.55"/>
+  <!-- Glowing Leyline Energy Stream -->
+  <rect x="46" y="0" width="8" height="100" fill="#0284c7" opacity="0.28"/>
+  <line x1="50" y1="0" x2="50" y2="100" stroke="url(#leyGlow)" stroke-width="2.5"/>
+  <!-- Central Conduit Node & Side Runes -->
+  <polygon points="50,38 60,50 50,62 40,50" fill="#0f172a" stroke="#f59e0b" stroke-width="1.4"/>
+  <polygon points="50,43 55,50 50,57 45,50" fill="#38bdf8"/>
+  <path d="M 16 20 L 22 20 L 19 28 Z M 78 20 L 84 20 L 81 28 Z M 16 72 L 22 72 L 19 80 Z M 78 72 L 84 72 L 81 80 Z" fill="none" stroke="#38bdf8" stroke-width="1" opacity="0.45"/>
+</svg>

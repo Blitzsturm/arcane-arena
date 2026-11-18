@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-64 -64 128 128" width="256" height="256">
+  <defs>
+    <linearGradient id="skelBone" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="65%" stop-color="#cbd5e1"/>
+      <stop offset="100%" stop-color="#64748b"/>
+    </linearGradient>
+    <linearGradient id="skelCloak" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#312e81"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Tattered Undead Shroud (-X) -->
+  <path d="M -6 -18 L -38 -24 L -30 -8 L -42 0 L -30 8 L -38 24 L -6 18 Z"
+        fill="url(#skelCloak)" stroke="#0f172a" stroke-width="2" stroke-linejoin="round"/>
+
+  <!-- Exposed Bone Ribcage & Spine -->
+  <line x1="-18" y1="0" x2="8" y2="0" stroke="url(#skelBone)" stroke-width="5" stroke-linecap="round"/>
+  <path d="M -10 -16 C -2 -18, 4 -14, 4 -6 M -4 -18 C 4 -20, 10 -15, 10 -6" fill="none" stroke="url(#skelBone)" stroke-width="3" stroke-linecap="round"/>
+  <path d="M -10 16 C -2 18, 4 14, 4 6 M -4 18 C 4 20, 10 15, 10 6" fill="none" stroke="url(#skelBone)" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Bone Shoulder Pauldrons -->
+  <ellipse cx="0" cy="-20" rx="9" ry="6" transform="rotate(-20 0 -20)" fill="url(#skelBone)" stroke="#334155" stroke-width="2"/>
+  <ellipse cx="0" cy="20" rx="9" ry="6" transform="rotate(20 0 20)" fill="url(#skelBone)" stroke="#334155" stroke-width="2"/>
+
+  <!-- Bone Recurve Bow & Drawn Crimson Arrow (+X) -->
+  <g id="skeleton-bow">
+    <!-- Bowstring -->
+    <polyline points="22,-32 4,0 22,32" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+    <!-- Curved Femur/Horn Bow Limbs -->
+    <path d="M 22 -33 C 29 -24, 34 -12, 34 0 C 34 12, 29 24, 22 33"
+          fill="none" stroke="url(#skelBone)" stroke-width="4.5" stroke-linecap="round"/>
+    <!-- Spiked Bone Knobs -->
+    <polygon points="34,-4 40,0 34,4" fill="#94a3b8"/>
+    <!-- Crimson-Tipped Bone Arrow -->
+    <line x1="4" y1="0" x2="50" y2="0" stroke="#e2e8f0" stroke-width="2.5" stroke-linecap="round"/>
+    <polygon points="46,-5 58,0 46,5 49,0" fill="#ef4444" stroke="#7f1d1d" stroke-width="1.2"/>
+    <!-- Skeletal Hands -->
+    <circle cx="32" cy="-2" r="3.5" fill="url(#skelBone)" stroke="#334155" stroke-width="1.5"/>
+    <circle cx="5" cy="3" r="3.5" fill="url(#skelBone)" stroke="#334155" stroke-width="1.5"/>
+  </g>
+
+  <!-- Undead Skull (Center) -->
+  <g id="skeleton-skull">
+    <circle cx="0" cy="0" r="12.5" fill="url(#skelBone)" stroke="#1e293b" stroke-width="2.4"/>
+    <!-- Cheekbones & Jaw (+X) -->
+    <path d="M 8 -8 L 15 -5 L 15 5 L 8 8 Z" fill="url(#skelBone)" stroke="#1e293b" stroke-width="2" stroke-linejoin="round"/>
+    <!-- Glowing Crimson Eye Sockets -->
+    <circle cx="9" cy="-5" r="2.8" fill="#ef4444"/>
+    <circle cx="9" cy="5" r="2.8" fill="#ef4444"/>
+    <circle cx="9.5" cy="-5" r="1.2" fill="#fef08a"/>
+    <circle cx="9.5" cy="5" r="1.2" fill="#fef08a"/>
+    <!-- Cranial Suture Crack -->
+    <polyline points="-10,-2 -4,1 -1,-3" fill="none" stroke="#334155" stroke-width="1.6" stroke-linecap="round"/>
+  </g>
+</svg>

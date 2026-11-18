@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 140">
+  <defs>
+    <radialGradient id="pillarShadow" cx="50%" cy="50%" r="50%">
+      <stop offset="60%" stop-color="#020617" stop-opacity="0.75"/>
+      <stop offset="100%" stop-color="#020617" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="obeliskStone" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#334155"/>
+      <stop offset="50%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <radialGradient id="brazierFlame" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="30%" stop-color="#7dd3fc"/>
+      <stop offset="65%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#1e3a8a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- Ambient Drop Shadow -->
+  <circle cx="74" cy="76" r="62" fill="url(#pillarShadow)"/>
+  <!-- Outer Stepped Octagonal Plinth (Matches r=46 collision footprint) -->
+  <polygon points="48,14 92,14 126,48 126,92 92,126 48,126 14,92 14,48" fill="#1e293b" stroke="#64748b" stroke-width="2.5"/>
+  <!-- Gold-Trimmed Inner Plinth -->
+  <polygon points="52,22 88,22 118,52 118,88 88,118 52,118 22,88 22,52" fill="url(#obeliskStone)" stroke="#d97706" stroke-width="2"/>
+  <!-- 4 Cardinal Buttress Ribs -->
+  <rect x="63" y="14" width="14" height="22" rx="2" fill="#334155" stroke="#94a3b8" stroke-width="1.2"/>
+  <rect x="63" y="104" width="14" height="22" rx="2" fill="#1e293b" stroke="#475569" stroke-width="1.2"/>
+  <rect x="14" y="63" width="22" height="14" rx="2" fill="#334155" stroke="#94a3b8" stroke-width="1.2"/>
+  <rect x="104" y="63" width="22" height="14" rx="2" fill="#1e293b" stroke="#475569" stroke-width="1.2"/>
+  <!-- Beveled Sloped Faces -->
+  <line x1="22" y1="52" x2="46" y2="58" stroke="#64748b" stroke-width="1.5"/>
+  <line x1="52" y1="22" x2="58" y2="46" stroke="#64748b" stroke-width="1.5"/>
+  <line x1="88" y1="22" x2="82" y2="46" stroke="#475569" stroke-width="1.5"/>
+  <line x1="118" y1="52" x2="94" y2="58" stroke="#475569" stroke-width="1.5"/>
+  <line x1="118" y1="88" x2="94" y2="82" stroke="#0f172a" stroke-width="1.5"/>
+  <line x1="88" y1="118" x2="82" y2="94" stroke="#0f172a" stroke-width="1.5"/>
+  <line x1="52" y1="118" x2="58" y2="94" stroke="#1e293b" stroke-width="1.5"/>
+  <line x1="22" y1="88" x2="46" y2="82" stroke="#1e293b" stroke-width="1.5"/>
+  <!-- Glowing Engraved Runes on Cardinal Buttresses -->
+  <g stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round">
+    <line x1="70" y1="19" x2="70" y2="31"/>
+    <line x1="70" y1="109" x2="70" y2="121"/>
+    <line x1="19" y1="70" x2="31" y2="70"/>
+    <line x1="109" y1="70" x2="121" y2="70"/>
+  </g>
+  <!-- Top Bronze Brazier Basin -->
+  <circle cx="70" cy="70" r="26" fill="#0f172a" stroke="#f59e0b" stroke-width="3"/>
+  <circle cx="70" cy="70" r="20" fill="#172554" stroke="#fbbf24" stroke-width="1.2" stroke-dasharray="5 3"/>
+  <!-- Eternal Arcane Flame Core -->
+  <circle cx="70" cy="70" r="22" fill="url(#brazierFlame)"/>
+  <polygon points="70,53 76,64 87,70 76,76 70,87 64,76 53,70 64,64" fill="#bae6fd" opacity="0.9"/>
+  <circle cx="70" cy="70" r="6" fill="#ffffff"/>
+</svg>

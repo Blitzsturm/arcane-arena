@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-48 -24 96 48" width="128" height="64">
+  <defs>
+    <linearGradient id="kunaiMetal" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#334155"/>
+      <stop offset="60%" stop-color="#e2e8f0"/>
+      <stop offset="100%" stop-color="#fb7185"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Trailing Crimson Silk Ribbon (-X) -->
+  <path d="M -24 0 Q -34 -7 -45 -3 Q -36 5 -24 2" fill="none" stroke="#f43f5e" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- Ring Pommel & Wrapped Grip -->
+  <circle cx="-20" cy="0" r="5" fill="none" stroke="#94a3b8" stroke-width="2.5"/>
+  <line x1="-15" y1="0" x2="-2" y2="0" stroke="#e11d48" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Diamond Assassin Kunai Blade (+X) -->
+  <polygon points="-2,-9 38,0 -2,9 4,0" fill="url(#kunaiMetal)" stroke="#0f172a" stroke-width="1.8" stroke-linejoin="round"/>
+  <line x1="2" y1="0" x2="30" y2="0" stroke="#f43f5e" stroke-width="2" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-48 -24 96 48" width="128" height="64">
+  <defs>
+    <linearGradient id="critTip" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="50%" stop-color="#fde047"/>
+      <stop offset="100%" stop-color="#ffffff"/>
+    </linearGradient>
+    <linearGradient id="critWake" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f59e0b" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#fde047" stop-opacity="0.8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Piercing Golden Sonic Cone -->
+  <path d="M -46 -10 L 28 -2 L 28 2 L -46 10 Z" fill="url(#critWake)"/>
+  <!-- Helical Wind Spirals -->
+  <path d="M -32 -7 Q -16 9 0 -7 Q 16 -9 24 0" fill="none" stroke="#fef08a" stroke-width="2" stroke-linecap="round" stroke-opacity="0.85"/>
+
+  <!-- Golden Fletching -->
+  <polygon points="-34,0 -44,-10 -24,-9 -16,0" fill="#fbbf24" stroke="#78350f" stroke-width="1.2"/>
+  <polygon points="-34,0 -44,10 -24,9 -16,0" fill="#f59e0b" stroke="#78350f" stroke-width="1.2"/>
+
+  <!-- Glowing Shaft -->
+  <line x1="-38" y1="0" x2="26" y2="0" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round"/>
+
+  <!-- Heavy Piercing Crit Broadhead (+X) -->
+  <polygon points="14,-11 45,0 14,11 22,0" fill="url(#critTip)" stroke="#b45309" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-128 -128 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="cleaveTrail" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a" stop-opacity="0.95"/>
+      <stop offset="45%" stop-color="#f59e0b" stop-opacity="0.75"/>
+      <stop offset="100%" stop-color="#b45309" stop-opacity="0.0"/>
+    </linearGradient>
+    <linearGradient id="cleaveEdge" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="60%" stop-color="#fde047" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.1"/>
+    </linearGradient>
+    <linearGradient id="swordBlade" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#94a3b8"/>
+      <stop offset="55%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#fef08a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Sweeping Crescent Motion Blur (Covers 135 deg hitbox sector centered on +X) -->
+  <path d="M 38 -92 A 100 100 0 0 1 100 0 A 100 100 0 0 1 38 92 L 18 52 A 56 56 0 0 0 56 0 A 56 56 0 0 0 18 -52 Z"
+        fill="url(#cleaveTrail)"/>
+
+  <!-- Outer Razor Edge Highlight Arc -->
+  <path d="M 38 -92 A 100 100 0 0 1 100 0 A 100 100 0 0 1 38 92"
+        fill="none" stroke="url(#cleaveEdge)" stroke-width="6" stroke-linecap="round"/>
+
+  <!-- Inner Speed Lines -->
+  <path d="M 48 -68 A 82 82 0 0 1 82 0 A 82 82 0 0 1 48 68"
+        fill="none" stroke="#fef08a" stroke-width="2.5" stroke-dasharray="18 10" stroke-linecap="round" stroke-opacity="0.8"/>
+
+  <!-- Physical Broadsword at Leading Edge of the Swing -->
+  <g id="leading-broadsword" transform="rotate(52)">
+    <rect x="14" y="-3" width="14" height="6" rx="2" fill="#78350f" stroke="#451a03" stroke-width="1.5"/>
+    <path d="M 27 -13 L 33 -10 L 33 10 L 27 13 Z" fill="#f59e0b" stroke="#451a03" stroke-width="1.5"/>
+    <polygon points="33,-7 96,-4 108,0 96,4 33,7" fill="url(#swordBlade)" stroke="#334155" stroke-width="1.8" stroke-linejoin="round"/>
+    <line x1="36" y1="0" x2="92" y2="0" stroke="#f59e0b" stroke-width="2.2" stroke-linecap="round"/>
+  </g>
+</svg>
