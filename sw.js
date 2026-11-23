@@ -2,6 +2,7 @@ const CACHE_NAME = 'arcane-arena-v1';
 const PRECACHE_URLS = [
   './',
   './index.html',
+  './tailwindcss.min.js',
   './manifest.webmanifest',
   './assets/icon.svg',
   './music/The_Knight_s_Rapid_Ascent.mp3',
