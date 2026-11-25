@@ -6,8 +6,8 @@ const PRECACHE_URLS = [
   './three.min.js',
   './manifest.webmanifest',
   './assets/icon.svg',
-  './music/The_Knight_s_Rapid_Ascent.mp3',
-  './music/Siege_of_the_Iron_Keep.mp3'
+  './music/The_Knight_s_Rapid_Ascent.m4a',
+  './music/Siege_of_the_Iron_Keep.m4a'
 ];
 
 self.addEventListener('install', (event) => {
