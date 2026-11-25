@@ -12,6 +12,7 @@
   <link rel="apple-touch-icon" href="./assets/icon.svg" />
   <title>Arcane Arena — Twin-Stick Fantasy Survival</title>
   <script src="./tailwindcss.min.js"></script>
+  <script src="./three.min.js"></script>
   <style>
     :root {
       --ui-scale: 1;
@@ -2922,8 +2923,10 @@
     // 4. GAME STATE & ARENA SIMULATION
     // =========================================================================
     const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
     const input = new InputManager(canvas);
+    let viewportWidth = window.innerWidth || 1024;
+    let viewportHeight = window.innerHeight || 768;
+    let threeRenderer = null;
 
     const ARENA = {
       width: 2000,
@@ -3100,8 +3103,11 @@
     }
 
     function resizeCanvas() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      viewportWidth = window.innerWidth || 1024;
+      viewportHeight = window.innerHeight || 768;
+      if (threeRenderer) {
+        threeRenderer.resize(viewportWidth, viewportHeight);
+      }
       updateViewportScale();
       if (player) updateHud();
     }
@@ -3266,6 +3272,7 @@
     const HERO_IMAGES = {};
     Object.keys(HERO_SVGS).forEach((id) => {
       const img = new Image();
+      img.onload = () => { if (threeRenderer) threeRenderer.registerImageTexture('hero', id, img, 128, 128); };
       img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(HERO_SVGS[id]);
       HERO_IMAGES[id] = img;
     });
@@ -3438,6 +3445,7 @@
     const MONSTER_IMAGES = {};
     Object.keys(MONSTER_SVGS).forEach((id) => {
       const img = new Image();
+      img.onload = () => { if (threeRenderer) threeRenderer.registerImageTexture('monster', id, img, 192, 192); };
       img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(MONSTER_SVGS[id]);
       MONSTER_IMAGES[id] = img;
     });
@@ -3541,6 +3549,7 @@
     const WEAPON_IMAGES = {};
     Object.keys(WEAPON_SVGS).forEach((id) => {
       const img = new Image();
+      img.onload = () => { if (threeRenderer) threeRenderer.registerImageTexture('weapon', id, img, 128, 128); };
       img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(WEAPON_SVGS[id]);
       WEAPON_IMAGES[id] = img;
     });
@@ -3899,12 +3908,18 @@
 
       arenaFloorCache = off;
       arenaFloorCacheReady = true;
+      if (threeRenderer) {
+        threeRenderer.updateFloorTexture(arenaFloorCache);
+      }
     }
 
     Object.keys(ENV_SVGS).forEach((id) => {
       const img = new Image();
       img.onload = () => {
         envLoadedCount++;
+        if (id === 'pillar_obelisk' && threeRenderer) {
+          threeRenderer.registerImageTexture('env', 'pillar_obelisk', img, 256, 256);
+        }
         if (envLoadedCount >= envTotalKeys) {
           buildArenaFloorCache();
         }
@@ -5227,8 +5242,8 @@
       if (camera.shake > 0) camera.shake = Math.max(0, camera.shake - 35 * dt);
       const shakeX = (Math.random() - 0.5) * camera.shake;
       const shakeY = (Math.random() - 0.5) * camera.shake;
-      const viewW = canvas.width / camera.zoom;
-      const viewH = canvas.height / camera.zoom;
+      const viewW = viewportWidth / camera.zoom;
+      const viewH = viewportHeight / camera.zoom;
       const targetCamX = viewW >= ARENA.width
         ? (ARENA.width - viewW) / 2
         : Math.max(0, Math.min(ARENA.width - viewW, player.x - viewW / 2));
@@ -5625,522 +5640,1281 @@
       document.getElementById('hudInputDevice').textContent = input.activeDevice;
     }
 
+    // =========================================================================
+    // 11B. THREE.JS GPU WEBGL RENDERER (INSTANCED BATCHING & SHADER EFFECTS)
+    // =========================================================================
+    class ArcaneThreeRenderer {
+      constructor(canvasEl) {
+        this.canvas = canvasEl;
+        this.visualConfig = {
+          pixelRatioCap: 2,
+          additiveGlow: true,
+          hitFlashStrength: 0.72
+        };
+
+        this.renderer = new THREE.WebGLRenderer({
+          canvas: canvasEl,
+          antialias: false,
+          alpha: false,
+          powerPreference: 'high-performance',
+          stencil: false,
+          depth: false
+        });
+        this.renderer.setClearColor(0x05070d, 1);
+        this.renderer.sortObjects = true;
+        this.renderer.autoClear = true;
+
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.OrthographicCamera(0, viewportWidth, 0, -viewportHeight, -200, 200);
+        this.camera.position.set(0, 0, 100);
+
+        // Reusable zero-GC math helpers
+        this._tmpMat = new THREE.Matrix4();
+        this._matEl = this._tmpMat.elements;
+        this._tmpColor = new THREE.Color();
+
+        // Shared unit geometry
+        this.unitPlane = new THREE.PlaneGeometry(1, 1);
+
+        // Texture caches
+        this.textures = { hero: {}, monster: {}, weapon: {}, env: {}, proc: {} };
+        this.textTextureCache = new Map();
+        this.maxTextCacheSize = 160;
+
+        this._buildProceduralTextures();
+        this._buildStaticScene();
+        this._buildDynamicPools();
+
+        // Sync any already-loaded SVG images & floor cache
+        this._syncLoadedImages();
+        if (arenaFloorCacheReady && arenaFloorCache) {
+          this.updateFloorTexture(arenaFloorCache);
+        }
+
+        this.resize(viewportWidth, viewportHeight);
+      }
+
+      resize(w, h) {
+        const dpr = Math.min(window.devicePixelRatio || 1, this.visualConfig.pixelRatioCap);
+        this.renderer.setPixelRatio(dpr);
+        this.renderer.setSize(w, h, false);
+      }
+
+      // Fast 2D affine matrix writer (zero allocations, exact CW-to-ThreeJS transform)
+      _setInstMatrix(instMesh, idx, wx, wy, z, rotCW, sx, sy) {
+        const rot = -rotCW;
+        const c = Math.cos(rot);
+        const s = Math.sin(rot);
+        const te = this._matEl;
+        te[0] = c * sx;  te[4] = -s * sy; te[8] = 0;  te[12] = wx;
+        te[1] = s * sx;  te[5] =  c * sy; te[9] = 0;  te[13] = -wy;
+        te[2] = 0;       te[6] = 0;       te[10] = 1; te[14] = z;
+        te[3] = 0;       te[7] = 0;       te[11] = 0; te[15] = 1;
+        instMesh.setMatrixAt(idx, this._tmpMat);
+      }
+
+      _makeCanvasTexture(c, nearest = false) {
+        const tex = new THREE.CanvasTexture(c);
+        tex.minFilter = nearest ? THREE.NearestFilter : THREE.LinearFilter;
+        tex.magFilter = nearest ? THREE.NearestFilter : THREE.LinearFilter;
+        tex.generateMipmaps = false;
+        tex.needsUpdate = true;
+        return tex;
+      }
+
+      registerImageTexture(group, id, img, w = 128, h = 128) {
+        if (!img || !img.complete || img.naturalWidth === 0) return null;
+        const off = document.createElement('canvas');
+        off.width = w;
+        off.height = h;
+        const octx = off.getContext('2d');
+        octx.clearRect(0, 0, w, h);
+        octx.drawImage(img, 0, 0, w, h);
+        const tex = this._makeCanvasTexture(off);
+
+        const prev = this.textures[group][id];
+        if (prev) prev.dispose();
+        this.textures[group][id] = tex;
+
+        // Hot-bind into live materials
+        if (group === 'monster' && this.enemyBatches && this.enemyBatches[id]) {
+          this.enemyBatches[id].material.uniforms.uMap.value = tex;
+          this.enemyBatches[id].material.uniforms.uHasMap.value = 1.0;
+        } else if (group === 'weapon' && this.projBatches && this.projBatches[id]) {
+          this.projBatches[id].material.map = tex;
+          this.projBatches[id].material.needsUpdate = true;
+        } else if (group === 'env' && id === 'pillar_obelisk' && this.pillarMeshes) {
+          for (const pm of this.pillarMeshes) {
+            pm.material.map = tex;
+            pm.material.color.setHex(0xffffff);
+            pm.material.needsUpdate = true;
+          }
+        } else if (group === 'hero' && this.playerHeroMesh && player && player.classDef.id === id) {
+          this.playerHeroMesh.material.map = tex;
+          this.playerHeroMesh.material.needsUpdate = true;
+        }
+        return tex;
+      }
+
+      _syncLoadedImages() {
+        Object.keys(HERO_IMAGES).forEach((id) => {
+          if (HERO_IMAGES[id] && HERO_IMAGES[id].complete) {
+            this.registerImageTexture('hero', id, HERO_IMAGES[id], 128, 128);
+          }
+        });
+        Object.keys(MONSTER_IMAGES).forEach((id) => {
+          if (MONSTER_IMAGES[id] && MONSTER_IMAGES[id].complete) {
+            this.registerImageTexture('monster', id, MONSTER_IMAGES[id], 192, 192);
+          }
+        });
+        Object.keys(WEAPON_IMAGES).forEach((id) => {
+          if (WEAPON_IMAGES[id] && WEAPON_IMAGES[id].complete) {
+            this.registerImageTexture('weapon', id, WEAPON_IMAGES[id], 128, 128);
+          }
+        });
+        if (ENV_IMAGES.pillar_obelisk && ENV_IMAGES.pillar_obelisk.complete) {
+          this.registerImageTexture('env', 'pillar_obelisk', ENV_IMAGES.pillar_obelisk, 256, 256);
+        }
+      }
+
+      updateFloorTexture(floorCanvas) {
+        if (!floorCanvas) return;
+        const tex = this._makeCanvasTexture(floorCanvas);
+        if (this.floorMesh.material.map) {
+          this.floorMesh.material.map.dispose();
+        }
+        this.floorMesh.material.map = tex;
+        this.floorMesh.material.color.setHex(0xffffff);
+        this.floorMesh.material.needsUpdate = true;
+      }
+
+      _buildProceduralTextures() {
+        // 1. Soft radial glow (torches, leyline pulses, pillar braziers)
+        {
+          const c = document.createElement('canvas');
+          c.width = 128; c.height = 128;
+          const g = c.getContext('2d');
+          const rad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+          rad.addColorStop(0, 'rgba(255,255,255,1.0)');
+          rad.addColorStop(0.38, 'rgba(255,255,255,0.55)');
+          rad.addColorStop(0.75, 'rgba(255,255,255,0.14)');
+          rad.addColorStop(1, 'rgba(255,255,255,0.0)');
+          g.fillStyle = rad;
+          g.fillRect(0, 0, 128, 128);
+          this.textures.proc.softGlow = this._makeCanvasTexture(c);
+        }
+
+        // 2. Smooth anti-aliased solid disc (particles, fallback orbs)
+        {
+          const c = document.createElement('canvas');
+          c.width = 64; c.height = 64;
+          const g = c.getContext('2d');
+          g.fillStyle = '#ffffff';
+          g.beginPath();
+          g.arc(32, 32, 29, 0, Math.PI * 2);
+          g.fill();
+          this.textures.proc.circleSolid = this._makeCanvasTexture(c);
+        }
+
+        // 3. Faceted XP Crystal Diamond with crisp white edge
+        {
+          const c = document.createElement('canvas');
+          c.width = 64; c.height = 64;
+          const g = c.getContext('2d');
+          g.beginPath();
+          g.moveTo(32, 4);
+          g.lineTo(60, 32);
+          g.lineTo(32, 60);
+          g.lineTo(4, 32);
+          g.closePath();
+          g.fillStyle = '#ffffff';
+          g.fill();
+          // Subtle inner facet highlight
+          g.beginPath();
+          g.moveTo(32, 8);
+          g.lineTo(48, 32);
+          g.lineTo(32, 32);
+          g.closePath();
+          g.fillStyle = 'rgba(255,255,255,0.35)';
+          g.fill();
+          g.strokeStyle = '#ffffff';
+          g.lineWidth = 4;
+          g.beginPath();
+          g.moveTo(32, 4);
+          g.lineTo(60, 32);
+          g.lineTo(32, 60);
+          g.lineTo(4, 32);
+          g.closePath();
+          g.stroke();
+          this.textures.proc.xpDiamond = this._makeCanvasTexture(c);
+        }
+
+        // 4. Outer Celestial Astrolabe Dashed Ring
+        {
+          const c = document.createElement('canvas');
+          c.width = 512; c.height = 512;
+          const g = c.getContext('2d');
+          g.strokeStyle = '#ffffff';
+          g.lineWidth = 4;
+          g.setLineDash([22, 18]);
+          g.beginPath();
+          g.arc(256, 256, 246, 0, Math.PI * 2);
+          g.stroke();
+          this.textures.proc.astrolabeOuter = this._makeCanvasTexture(c);
+        }
+
+        // 5. Inner Celestial Astrolabe Dashed Ring
+        {
+          const c = document.createElement('canvas');
+          c.width = 256; c.height = 256;
+          const g = c.getContext('2d');
+          g.strokeStyle = '#fbbf24';
+          g.lineWidth = 3.5;
+          g.setLineDash([10, 13]);
+          g.beginPath();
+          g.arc(128, 128, 120, 0, Math.PI * 2);
+          g.stroke();
+          this.textures.proc.astrolabeInner = this._makeCanvasTexture(c);
+        }
+
+        // 6. Spawn Portal Arcane Summoning Rift
+        {
+          const c = document.createElement('canvas');
+          c.width = 128; c.height = 128;
+          const g = c.getContext('2d');
+          g.fillStyle = 'rgba(168, 85, 247, 0.22)';
+          g.strokeStyle = 'rgba(244, 63, 94, 0.92)';
+          g.lineWidth = 5;
+          g.beginPath();
+          g.arc(64, 64, 58, 0, Math.PI * 2);
+          g.fill();
+          g.stroke();
+          g.setLineDash([10, 8]);
+          g.strokeStyle = '#fda4af';
+          g.lineWidth = 4;
+          g.beginPath();
+          g.arc(64, 64, 39, 0, Math.PI * 2);
+          g.stroke();
+          this.textures.proc.spawnPortal = this._makeCanvasTexture(c);
+        }
+
+        // 7. Ground Hazard Disc (filled circle + outer stroke, white-tinted per type)
+        {
+          const c = document.createElement('canvas');
+          c.width = 256; c.height = 256;
+          const g = c.getContext('2d');
+          g.fillStyle = 'rgba(255, 255, 255, 0.32)';
+          g.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+          g.lineWidth = 5;
+          g.beginPath();
+          g.arc(128, 128, 122, 0, Math.PI * 2);
+          g.fill();
+          g.stroke();
+          this.textures.proc.hazardDisc = this._makeCanvasTexture(c);
+        }
+
+        // 8. Thin Ring (reticle, death mark, stun indicator, barrier)
+        {
+          const c = document.createElement('canvas');
+          c.width = 128; c.height = 128;
+          const g = c.getContext('2d');
+          g.strokeStyle = '#ffffff';
+          g.lineWidth = 6;
+          g.beginPath();
+          g.arc(64, 64, 58, 0, Math.PI * 2);
+          g.stroke();
+          this.textures.proc.ringThin = this._makeCanvasTexture(c);
+        }
+
+        // 9. Stun Rect Indicator
+        {
+          const c = document.createElement('canvas');
+          c.width = 64; c.height = 32;
+          const g = c.getContext('2d');
+          g.strokeStyle = '#fbbf24';
+          g.lineWidth = 6;
+          g.strokeRect(4, 4, 56, 24);
+          this.textures.proc.stunRect = this._makeCanvasTexture(c);
+        }
+
+        // 10. Sweeping Broadsword Blade (oriented along +X from pivot at left edge)
+        {
+          const c = document.createElement('canvas');
+          c.width = 256; c.height = 64;
+          const g = c.getContext('2d');
+          const mid = 32;
+          // Hilt
+          g.fillStyle = '#78350f';
+          g.fillRect(22, mid - 5, 24, 10);
+          // Crossguard
+          g.fillStyle = '#f59e0b';
+          g.fillRect(44, mid - 20, 10, 40);
+          // Runed Blade
+          g.fillStyle = '#f8fafc';
+          g.strokeStyle = '#f59e0b';
+          g.lineWidth = 3.2;
+          g.beginPath();
+          g.moveTo(54, mid - 11);
+          g.lineTo(232, mid - 7);
+          g.lineTo(252, mid);
+          g.lineTo(232, mid + 7);
+          g.lineTo(54, mid + 11);
+          g.closePath();
+          g.fill();
+          g.stroke();
+          this.textures.proc.bladeSword = this._makeCanvasTexture(c);
+        }
+
+        // 11. Sweeping Rogue Dagger Blade
+        {
+          const c = document.createElement('canvas');
+          c.width = 256; c.height = 64;
+          const g = c.getContext('2d');
+          const mid = 32;
+          g.fillStyle = '#f43f5e';
+          g.strokeStyle = '#ffffff';
+          g.lineWidth = 3;
+          g.beginPath();
+          g.moveTo(36, mid - 8);
+          g.lineTo(250, mid);
+          g.lineTo(36, mid + 8);
+          g.closePath();
+          g.fill();
+          g.stroke();
+          this.textures.proc.bladeDagger = this._makeCanvasTexture(c);
+        }
+      }
+
+      _buildStaticScene() {
+        // 1. Pre-baked Arena Floor Plane (2000 x 1400)
+        const floorMat = new THREE.MeshBasicMaterial({ color: 0x0e1422, transparent: false });
+        this.floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(ARENA.width, ARENA.height), floorMat);
+        this.floorMesh.position.set(ARENA.width / 2, -ARENA.height / 2, 0);
+        this.floorMesh.renderOrder = 0;
+        this.scene.add(this.floorMesh);
+
+        // 2. Ascension Realm Atmospheric Tint Overlay
+        const ascMat = new THREE.MeshBasicMaterial({
+          color: 0xe11d48,
+          transparent: true,
+          opacity: 0.0,
+          depthWrite: false
+        });
+        this.ascTintMesh = new THREE.Mesh(new THREE.PlaneGeometry(ARENA.width, ARENA.height), ascMat);
+        this.ascTintMesh.position.set(ARENA.width / 2, -ARENA.height / 2, 1);
+        this.ascTintMesh.renderOrder = 1;
+        this.ascTintMesh.visible = false;
+        this.scene.add(this.ascTintMesh);
+
+        // 3. Central Counter-Rotating Celestial Astrolabe Rings
+        this.astrolabeOuter = new THREE.Mesh(
+          this.unitPlane,
+          new THREE.MeshBasicMaterial({
+            map: this.textures.proc.astrolabeOuter,
+            color: 0x38bdf8,
+            transparent: true,
+            opacity: 0.45,
+            depthWrite: false
+          })
+        );
+        this.astrolabeOuter.position.set(ARENA.width / 2, -ARENA.height / 2, 3);
+        this.astrolabeOuter.scale.set(274, 274, 1);
+        this.astrolabeOuter.renderOrder = 3;
+        this.scene.add(this.astrolabeOuter);
+
+        this.astrolabeInner = new THREE.Mesh(
+          this.unitPlane,
+          new THREE.MeshBasicMaterial({
+            map: this.textures.proc.astrolabeInner,
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.45,
+            depthWrite: false
+          })
+        );
+        this.astrolabeInner.position.set(ARENA.width / 2, -ARENA.height / 2, 3.1);
+        this.astrolabeInner.scale.set(162, 162, 1);
+        this.astrolabeInner.renderOrder = 3;
+        this.scene.add(this.astrolabeInner);
+
+        // 4. Arena Runic Obelisk Pillars (4 static SVG sprites)
+        this.pillarMeshes = [];
+        for (const pil of ARENA.pillars) {
+          const drawSz = pil.r * 2.95;
+          const pm = new THREE.Mesh(
+            this.unitPlane,
+            new THREE.MeshBasicMaterial({
+              color: 0x1e293b,
+              transparent: true,
+              depthWrite: false
+            })
+          );
+          pm.position.set(pil.x, -pil.y, 8);
+          pm.scale.set(drawSz, drawSz, 1);
+          pm.renderOrder = 8;
+          this.scene.add(pm);
+          this.pillarMeshes.push(pm);
+        }
+      }
+
+      _createColorAlphaInstancedBatch(maxCount, texture, renderOrder, additive = false) {
+        const geom = this.unitPlane.clone();
+        const colors = new Float32Array(maxCount * 3);
+        const alphas = new Float32Array(maxCount);
+        const colorAttr = new THREE.InstancedBufferAttribute(colors, 3);
+        const alphaAttr = new THREE.InstancedBufferAttribute(alphas, 1);
+        colorAttr.setUsage(THREE.DynamicDrawUsage);
+        alphaAttr.setUsage(THREE.DynamicDrawUsage);
+        geom.setAttribute('aColor', colorAttr);
+        geom.setAttribute('aAlpha', alphaAttr);
+
+        const mat = new THREE.ShaderMaterial({
+          uniforms: {
+            uMap: { value: texture }
+          },
+          vertexShader: `
+            attribute vec3 aColor;
+            attribute float aAlpha;
+            varying vec2 vUv;
+            varying vec3 vColor;
+            varying float vAlpha;
+            void main() {
+              vUv = uv;
+              vColor = aColor;
+              vAlpha = aAlpha;
+              gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform sampler2D uMap;
+            varying vec2 vUv;
+            varying vec3 vColor;
+            varying float vAlpha;
+            void main() {
+              vec4 tex = texture2D(uMap, vUv);
+              float a = tex.a * vAlpha;
+              if (a < 0.004) discard;
+              gl_FragColor = vec4(tex.rgb * vColor, a);
+            }
+          `,
+          transparent: true,
+          depthWrite: false,
+          blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending
+        });
+
+        const mesh = new THREE.InstancedMesh(geom, mat, maxCount);
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        mesh.frustumCulled = false;
+        mesh.renderOrder = renderOrder;
+        mesh.count = 0;
+        this.scene.add(mesh);
+
+        return { mesh, colorAttr, alphaAttr, maxCount };
+      }
+
+      _createEnemyInstancedBatch(maxCount, fallbackColorHex, renderOrder) {
+        const geom = this.unitPlane.clone();
+        const flashes = new Float32Array(maxCount);
+        const flashAttr = new THREE.InstancedBufferAttribute(flashes, 1);
+        flashAttr.setUsage(THREE.DynamicDrawUsage);
+        geom.setAttribute('aFlash', flashAttr);
+
+        const mat = new THREE.ShaderMaterial({
+          uniforms: {
+            uMap: { value: this.textures.proc.circleSolid },
+            uHasMap: { value: 0.0 },
+            uFallbackColor: { value: new THREE.Color(fallbackColorHex) },
+            uFlashStrength: { value: this.visualConfig.hitFlashStrength }
+          },
+          vertexShader: `
+            attribute float aFlash;
+            varying vec2 vUv;
+            varying float vFlash;
+            void main() {
+              vUv = uv;
+              vFlash = aFlash;
+              gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform sampler2D uMap;
+            uniform float uHasMap;
+            uniform vec3 uFallbackColor;
+            uniform float uFlashStrength;
+            varying vec2 vUv;
+            varying float vFlash;
+            void main() {
+              vec4 tex = texture2D(uMap, vUv);
+              if (tex.a < 0.01) discard;
+              vec3 baseCol = mix(uFallbackColor, tex.rgb, uHasMap);
+              vec3 finalCol = mix(baseCol, vec3(1.0), vFlash * uFlashStrength);
+              gl_FragColor = vec4(finalCol, tex.a);
+            }
+          `,
+          transparent: true,
+          depthWrite: false
+        });
+
+        const mesh = new THREE.InstancedMesh(geom, mat, maxCount);
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        mesh.frustumCulled = false;
+        mesh.renderOrder = renderOrder;
+        mesh.count = 0;
+        this.scene.add(mesh);
+
+        return { mesh, material: mat, flashAttr, maxCount };
+      }
+
+      _createSimpleInstancedBatch(maxCount, texture, renderOrder, colorHex = 0xffffff, opacity = 1.0) {
+        const mat = new THREE.MeshBasicMaterial({
+          map: texture,
+          color: colorHex,
+          transparent: true,
+          opacity,
+          depthWrite: false
+        });
+        const mesh = new THREE.InstancedMesh(this.unitPlane, mat, maxCount);
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        mesh.frustumCulled = false;
+        mesh.renderOrder = renderOrder;
+        mesh.count = 0;
+        this.scene.add(mesh);
+        return { mesh, material: mat, maxCount };
+      }
+
+      _createSlashArcMesh() {
+        const mat = new THREE.ShaderMaterial({
+          uniforms: {
+            uColor: { value: new THREE.Color('#f59e0b') },
+            uEdgeColor: { value: new THREE.Color('#fef08a') },
+            uStartAng: { value: -1.0 },
+            uEndAng: { value: 1.0 },
+            uAlpha: { value: 1.0 }
+          },
+          vertexShader: `
+            varying vec2 vLocal;
+            void main() {
+              vLocal = uv * 2.0 - 1.0;
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform vec3 uColor;
+            uniform vec3 uEdgeColor;
+            uniform float uStartAng;
+            uniform float uEndAng;
+            uniform float uAlpha;
+            varying vec2 vLocal;
+            void main() {
+              float r = length(vLocal);
+              if (r < 0.42 || r > 1.0) discard;
+              // Match 2D canvas clockwise angle (atan(y_down, x_right) = atan(-vLocal.y, vLocal.x))
+              float ang = atan(-vLocal.y, vLocal.x);
+              float lo = min(uStartAng, uEndAng);
+              float hi = max(uStartAng, uEndAng);
+              if (ang < lo || ang > hi) discard;
+
+              float radialT = clamp((r - 0.35) / 0.65, 0.0, 1.0);
+              float fillA = mix(0.0, 0.86, smoothstep(0.0, 1.0, radialT));
+              float edgeMask = smoothstep(0.92, 0.97, r);
+              vec3 col = mix(uColor, uEdgeColor, edgeMask);
+              float outA = max(fillA, edgeMask) * uAlpha;
+              if (outA < 0.01) discard;
+              gl_FragColor = vec4(col, outA);
+            }
+          `,
+          transparent: true,
+          depthWrite: false
+        });
+        const arcMesh = new THREE.Mesh(this.unitPlane, mat);
+        arcMesh.renderOrder = 14;
+        arcMesh.visible = false;
+        this.scene.add(arcMesh);
+
+        // Physical blade sprite pivoted from origin
+        const bladeGeom = new THREE.PlaneGeometry(1, 0.25);
+        bladeGeom.translate(0.5, 0, 0);
+        const bladeMat = new THREE.MeshBasicMaterial({
+          map: this.textures.proc.bladeSword,
+          transparent: true,
+          depthWrite: false
+        });
+        const bladeMesh = new THREE.Mesh(bladeGeom, bladeMat);
+        bladeMesh.renderOrder = 14.1;
+        bladeMesh.visible = false;
+        this.scene.add(bladeMesh);
+
+        return { arcMesh, bladeMesh };
+      }
+
+      _buildDynamicPools() {
+        // Additive Glow Batch: 34 wall torches + 8 leyline pulses + 4 pillar braziers = 46 (cap 96)
+        this.glowBatch = this._createColorAlphaInstancedBatch(
+          96, this.textures.proc.softGlow, 4, this.visualConfig.additiveGlow
+        );
+
+        // Ground Hazards Pool (up to 48 simultaneous hazards)
+        this.hazardPool = [];
+        for (let i = 0; i < 48; i++) {
+          const m = new THREE.Mesh(
+            this.unitPlane,
+            new THREE.MeshBasicMaterial({
+              map: this.textures.proc.hazardDisc,
+              transparent: true,
+              depthWrite: false
+            })
+          );
+          m.renderOrder = 5;
+          m.visible = false;
+          this.scene.add(m);
+          this.hazardPool.push(m);
+        }
+
+        // Spawn Portals Batch (up to 48)
+        this.portalBatch = this._createSimpleInstancedBatch(48, this.textures.proc.spawnPortal, 6, 0xffffff, 1.0);
+
+        // XP Crystal Gems Batch (up to 512)
+        this.xpGemBatch = this._createColorAlphaInstancedBatch(512, this.textures.proc.xpDiamond, 7, false);
+
+        // Enemy Telegraph Lines (up to 64 segments = 128 vertices)
+        this.maxTelegraphVerts = 128;
+        this.telegraphPositions = new Float32Array(this.maxTelegraphVerts * 3);
+        const teleGeom = new THREE.BufferGeometry();
+        teleGeom.setAttribute('position', new THREE.BufferAttribute(this.telegraphPositions, 3));
+        this.telegraphLines = new THREE.LineSegments(
+          teleGeom,
+          new THREE.LineBasicMaterial({ color: 0xf87171, transparent: true, opacity: 0.72 })
+        );
+        this.telegraphLines.frustumCulled = false;
+        this.telegraphLines.renderOrder = 9;
+        this.scene.add(this.telegraphLines);
+
+        // Enemy Instanced Batches (one per monster SVG type, with shader hit-flash)
+        const monsterSpecs = [
+          ['goblin', 160, '#22c55e'],
+          ['slime', 160, '#84cc16'],
+          ['archer', 120, '#e2e8f0'],
+          ['wraith', 120, '#a855f7'],
+          ['necromancer', 64, '#c084fc'],
+          ['golem', 64, '#64748b'],
+          ['boss_minotaur', 8, '#ef4444'],
+          ['boss_arachne', 8, '#10b981'],
+          ['boss_lich', 8, '#38bdf8']
+        ];
+        this.enemyBatches = {};
+        for (const [id, cap, hex] of monsterSpecs) {
+          this.enemyBatches[id] = this._createEnemyInstancedBatch(cap, hex, 10);
+        }
+
+        // Enemy Mini HP Bars & Status Indicators
+        this.hpBgBatch = this._createSimpleInstancedBatch(256, null, 11, 0x000000, 0.75);
+        this.hpFillBatch = this._createSimpleInstancedBatch(256, null, 11.1, 0xef4444, 1.0);
+        this.stunBatch = this._createSimpleInstancedBatch(128, this.textures.proc.stunRect, 11.2, 0xffffff, 1.0);
+        this.deathMarkBatch = this._createSimpleInstancedBatch(128, this.textures.proc.ringThin, 11.2, 0xf43f5e, 1.0);
+
+        // Player Character & Auras
+        this.playerWhirlwindMesh = new THREE.Mesh(
+          this.unitPlane,
+          new THREE.MeshBasicMaterial({
+            map: this.textures.proc.hazardDisc,
+            color: 0xfbbf24,
+            transparent: true,
+            opacity: 0.78,
+            depthWrite: false
+          })
+        );
+        this.playerWhirlwindMesh.renderOrder = 12;
+        this.playerWhirlwindMesh.visible = false;
+        this.scene.add(this.playerWhirlwindMesh);
+
+        this.playerBarrierMesh = new THREE.Mesh(
+          this.unitPlane,
+          new THREE.MeshBasicMaterial({
+            map: this.textures.proc.hazardDisc,
+            color: 0x38bdf8,
+            transparent: true,
+            opacity: 0.65,
+            depthWrite: false
+          })
+        );
+        this.playerBarrierMesh.renderOrder = 12.1;
+        this.playerBarrierMesh.visible = false;
+        this.scene.add(this.playerBarrierMesh);
+
+        this.playerHeroMesh = new THREE.Mesh(
+          this.unitPlane,
+          new THREE.MeshBasicMaterial({
+            map: this.textures.proc.circleSolid,
+            color: 0xffffff,
+            transparent: true,
+            depthWrite: false
+          })
+        );
+        this.playerHeroMesh.renderOrder = 13;
+        this.playerHeroMesh.visible = false;
+        this.scene.add(this.playerHeroMesh);
+        this._boundHeroClassId = null;
+
+        this.aimReticleMesh = new THREE.Mesh(
+          this.unitPlane,
+          new THREE.MeshBasicMaterial({
+            map: this.textures.proc.ringThin,
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.45,
+            depthWrite: false
+          })
+        );
+        this.aimReticleMesh.renderOrder = 13.1;
+        this.aimReticleMesh.visible = false;
+        this.scene.add(this.aimReticleMesh);
+
+        // Animated Melee Slash Arc Pool (up to 16)
+        this.slashPool = [];
+        for (let i = 0; i < 16; i++) {
+          this.slashPool.push(this._createSlashArcMesh());
+        }
+
+        // Chain Lightning Bolts (up to 64 bolts = 128 segments = 256 vertices)
+        this.maxBoltVerts = 256;
+        this.boltPositions = new Float32Array(this.maxBoltVerts * 3);
+        const boltGeom = new THREE.BufferGeometry();
+        boltGeom.setAttribute('position', new THREE.BufferAttribute(this.boltPositions, 3));
+        this.boltLines = new THREE.LineSegments(
+          boltGeom,
+          new THREE.LineBasicMaterial({ color: 0xe879f9, transparent: true, opacity: 0.95 })
+        );
+        this.boltLines.frustumCulled = false;
+        this.boltLines.renderOrder = 15;
+        this.scene.add(this.boltLines);
+
+        // Projectile Instanced Batches (Player & Enemy)
+        const projKeys = [
+          'proj_arrow', 'proj_arrow_crit', 'proj_kunai', 'fx_shockwave',
+          'spell_fireball', 'spell_frostbolt', 'spell_lightning_orb', 'proj_enemy_arrow'
+        ];
+        this.projBatches = {};
+        for (const key of projKeys) {
+          const order = key === 'proj_enemy_arrow' ? 17 : 16;
+          this.projBatches[key] = this._createSimpleInstancedBatch(256, this.textures.proc.circleSolid, order, 0xffffff, 1.0);
+        }
+
+        // Particles Instanced Batch (up to 640 particles in 1 draw call!)
+        this.particleBatch = this._createColorAlphaInstancedBatch(640, this.textures.proc.circleSolid, 18, false);
+
+        // Floating Damage & Status Numbers Pool (up to 96)
+        this.textPool = [];
+        for (let i = 0; i < 96; i++) {
+          const m = new THREE.Mesh(
+            this.unitPlane,
+            new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false })
+          );
+          m.renderOrder = 19;
+          m.visible = false;
+          this.scene.add(m);
+          this.textPool.push(m);
+        }
+      }
+
+      _getTextTextureEntry(text, color, size) {
+        const key = `${text}|${color}|${size}`;
+        const cached = this.textTextureCache.get(key);
+        if (cached) return cached;
+
+        if (this.textTextureCache.size >= this.maxTextCacheSize) {
+          const firstKey = this.textTextureCache.keys().next().value;
+          const old = this.textTextureCache.get(firstKey);
+          if (old && old.tex) old.tex.dispose();
+          this.textTextureCache.delete(firstKey);
+        }
+
+        const scale = 2;
+        const fontStr = `bold ${size * scale}px ui-monospace, SFMono-Regular, monospace`;
+        const c = document.createElement('canvas');
+        const g = c.getContext('2d');
+        g.font = fontStr;
+        const measured = Math.ceil(g.measureText(text).width);
+        const pad = 8;
+        c.width = Math.max(16, measured + pad * 2);
+        c.height = Math.max(16, Math.ceil(size * scale * 1.45) + pad);
+
+        g.font = fontStr;
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.strokeStyle = 'rgba(0,0,0,0.75)';
+        g.lineWidth = 3;
+        g.strokeText(text, c.width / 2, c.height / 2);
+        g.fillStyle = color;
+        g.fillText(text, c.width / 2, c.height / 2);
+
+        const entry = {
+          tex: this._makeCanvasTexture(c),
+          w: c.width / scale,
+          h: c.height / scale
+        };
+        this.textTextureCache.set(key, entry);
+        return entry;
+      }
+
+      render(nowSec) {
+        // 0. Sync Orthographic Camera to exact game camera & zoom
+        const viewW = viewportWidth / camera.zoom;
+        const viewH = viewportHeight / camera.zoom;
+        this.camera.left = camera.x;
+        this.camera.right = camera.x + viewW;
+        this.camera.top = -camera.y;
+        this.camera.bottom = -(camera.y + viewH);
+        this.camera.updateProjectionMatrix();
+
+        // 1. Ascension Realm Atmosphere
+        const asc = wave.ascension || 1;
+        const leyHex = asc === 1 ? 0x38bdf8 : asc === 2 ? 0xf43f5e : asc === 3 ? 0xa855f7 : 0xf59e0b;
+        if (asc > 1) {
+          this.ascTintMesh.visible = true;
+          this.ascTintMesh.material.color.setHex(asc === 2 ? 0xe11d48 : asc === 3 ? 0x9333ea : 0xf59e0b);
+          this.ascTintMesh.material.opacity = asc === 2 ? 0.07 : 0.08;
+        } else {
+          this.ascTintMesh.visible = false;
+        }
+
+        // 2. Live Counter-Rotating Celestial Astrolabe at Arena Center
+        const astroAlpha = 0.38 + 0.15 * Math.sin(nowSec * 2.2);
+        this.astrolabeOuter.material.color.setHex(leyHex);
+        this.astrolabeOuter.material.opacity = astroAlpha;
+        this.astrolabeOuter.rotation.z = nowSec * 0.28;
+        this.astrolabeInner.material.opacity = astroAlpha;
+        this.astrolabeInner.rotation.z = -nowSec * 0.37;
+
+        // 3. Instanced Additive Glow Pass (Leyline Pulses + Wall Torches + Pillar Braziers)
+        let glowIdx = 0;
+        const gBatch = this.glowBatch;
+        const pushGlow = (wx, wy, z, radius, hexColor, alpha) => {
+          if (glowIdx >= gBatch.maxCount) return;
+          this._setInstMatrix(gBatch.mesh, glowIdx, wx, wy, z, 0, radius * 2, radius * 2);
+          this._tmpColor.setHex(hexColor);
+          gBatch.colorAttr.setXYZ(glowIdx, this._tmpColor.r, this._tmpColor.g, this._tmpColor.b);
+          gBatch.alphaAttr.setX(glowIdx, alpha);
+          glowIdx++;
+        };
+
+        // 3a. Leyline Pulses
+        const pulsePhase = (nowSec * 180) % 700;
+        const pulseAlpha = 0.55 + 0.22 * Math.sin(nowSec * 3.5);
+        for (const ry of [650, 750]) {
+          pushGlow(60 + pulsePhase, ry, 2, 11, leyHex, pulseAlpha);
+          pushGlow(ARENA.width - 60 - pulsePhase, ry, 2, 11, leyHex, pulseAlpha);
+        }
+        const vPulse = (nowSec * 150) % 520;
+        for (const rx of [950, 1050]) {
+          pushGlow(rx, 60 + vPulse, 2, 11, leyHex, pulseAlpha);
+          pushGlow(rx, ARENA.height - 60 - vPulse, 2, 11, leyHex, pulseAlpha);
+        }
+
+        // 3b. Flickering Perimeter Wall Sconce Torchlight Halos
+        const flicker = 0.88 + 0.12 * Math.sin(nowSec * 11.0) * Math.cos(nowSec * 7.3);
+        const torchR = 62 * flicker;
+        for (let x = 100; x < ARENA.width; x += 200) {
+          pushGlow(x, 38, 4, torchR, 0xfbbf24, 0.14);
+          pushGlow(x, ARENA.height - 38, 4, torchR, 0xfbbf24, 0.14);
+        }
+        for (let y = 100; y < ARENA.height; y += 200) {
+          pushGlow(38, y, 4, torchR, 0xfbbf24, 0.14);
+          pushGlow(ARENA.width - 38, y, 4, torchR, 0xfbbf24, 0.14);
+        }
+
+        // 3c. Pillar Obelisk Live Arcane Brazier Halos
+        for (const pil of ARENA.pillars) {
+          const glowR = (30 + 5 * Math.sin(nowSec * 5.5 + pil.x)) * (asc > 1 ? 1.15 : 1.0);
+          pushGlow(pil.x, pil.y, 8.5, glowR, leyHex, 0.72);
+          pushGlow(pil.x, pil.y, 8.6, glowR * 0.38, 0xffffff, 0.85);
+        }
+
+        gBatch.mesh.count = glowIdx;
+        if (glowIdx > 0) {
+          gBatch.mesh.instanceMatrix.needsUpdate = true;
+          gBatch.colorAttr.needsUpdate = true;
+          gBatch.alphaAttr.needsUpdate = true;
+        }
+
+        // 4. Ground Hazards (Singularity, Fire Puddles, Caltrops, Decoys)
+        const singRot = (performance.now() * 0.004) % (Math.PI * 2);
+        const singTex = this.textures.weapon.spell_singularity;
+        for (let i = 0; i < this.hazardPool.length; i++) {
+          const m = this.hazardPool[i];
+          if (i < groundHazards.length) {
+            const h = groundHazards[i];
+            m.visible = true;
+            m.position.set(h.x, -h.y, 5);
+            if (h.type === 'singularity' && singTex) {
+              const sz = h.radius * 2.1;
+              m.scale.set(sz, sz, 1);
+              m.rotation.z = -singRot;
+              if (m.material.map !== singTex) {
+                m.material.map = singTex;
+                m.material.needsUpdate = true;
+              }
+              m.material.color.setHex(0xffffff);
+              m.material.opacity = 1.0;
+            } else {
+              const sz = (h.type === 'decoy' ? 22 : h.radius) * 2;
+              m.scale.set(sz, sz, 1);
+              m.rotation.z = 0;
+              if (m.material.map !== this.textures.proc.hazardDisc) {
+                m.material.map = this.textures.proc.hazardDisc;
+                m.material.needsUpdate = true;
+              }
+              if (h.type === 'fire_puddle') {
+                m.material.color.setHex(0xf97316);
+                m.material.opacity = 0.85;
+              } else if (h.type === 'caltrops') {
+                m.material.color.setHex(0x10b981);
+                m.material.opacity = 0.72;
+              } else if (h.type === 'decoy') {
+                m.material.color.setHex(0x38bdf8);
+                m.material.opacity = 0.92;
+              } else {
+                m.material.color.setHex(0x38bdf8);
+                m.material.opacity = 0.80;
+              }
+            }
+          } else {
+            m.visible = false;
+          }
+        }
+
+        // 5. Spawn Portal Warning Indicators
+        let pIdx = 0;
+        const pRot = nowSec * 3.2;
+        for (const p of spawnPortals) {
+          if (pIdx >= this.portalBatch.maxCount) break;
+          const progress = 1 - p.timer / p.maxTimer;
+          const r = 26 * progress + 8;
+          this._setInstMatrix(this.portalBatch.mesh, pIdx, p.x, p.y, 6, pRot, r * 2, r * 2);
+          pIdx++;
+        }
+        this.portalBatch.mesh.count = pIdx;
+        if (pIdx > 0) this.portalBatch.mesh.instanceMatrix.needsUpdate = true;
+
+        // 6. Faceted XP Crystal Gems (1 draw call)
+        const gemHex = { green: 0x34d399, blue: 0x38bdf8, purple: 0xc084fc, boss: 0xfbbf24 };
+        let gemIdx = 0;
+        for (const g of xpGems) {
+          if (gemIdx >= this.xpGemBatch.maxCount) break;
+          const r = g.tier === 'boss' ? 10.5 : g.tier === 'purple' ? 7.5 : 5.8;
+          this._setInstMatrix(this.xpGemBatch.mesh, gemIdx, g.x, g.y, 7, 0, r * 2.1, r * 2.1);
+          this._tmpColor.setHex(gemHex[g.tier] || 0x34d399);
+          this.xpGemBatch.colorAttr.setXYZ(gemIdx, this._tmpColor.r, this._tmpColor.g, this._tmpColor.b);
+          this.xpGemBatch.alphaAttr.setX(gemIdx, 1.0);
+          gemIdx++;
+        }
+        this.xpGemBatch.mesh.count = gemIdx;
+        if (gemIdx > 0) {
+          this.xpGemBatch.mesh.instanceMatrix.needsUpdate = true;
+          this.xpGemBatch.colorAttr.needsUpdate = true;
+          this.xpGemBatch.alphaAttr.needsUpdate = true;
+        }
+
+        // 7. Enemies, Telegraph Lines, Status Indicators & Mini HP Bars
+        const enemyCounts = {};
+        for (const k of Object.keys(this.enemyBatches)) enemyCounts[k] = 0;
+        let teleVert = 0;
+        let hpIdx = 0;
+        let stunIdx = 0;
+        let markIdx = 0;
+
+        for (const e of enemies) {
+          // Telegraph lines
+          if (((e.type === 'archer' && e.aiState === 'aiming') || (e.type === 'wraith' && e.aiState === 'windup')) && teleVert + 2 <= this.maxTelegraphVerts) {
+            const base = teleVert * 3;
+            this.telegraphPositions[base] = e.x;
+            this.telegraphPositions[base + 1] = -e.y;
+            this.telegraphPositions[base + 2] = 9;
+            this.telegraphPositions[base + 3] = e.x + Math.cos(e.aimAngle) * 340;
+            this.telegraphPositions[base + 4] = -(e.y + Math.sin(e.aimAngle) * 340);
+            this.telegraphPositions[base + 5] = 9;
+            teleVert += 2;
+          }
+
+          const facing = ((e.type === 'archer' && e.aiState === 'aiming') || (e.type === 'wraith' && (e.aiState === 'windup' || e.aiState === 'lunge')))
+            ? e.aimAngle
+            : (player ? Math.atan2(player.y - e.y, player.x - e.x) : 0);
+
+          const batchKey = this.enemyBatches[e.type] ? e.type : 'goblin';
+          const batch = this.enemyBatches[batchKey];
+          const idx = enemyCounts[batchKey];
+          if (idx < batch.maxCount) {
+            const drawSize = e.isBoss ? e.radius * 2.8 : e.radius * 3.1;
+            this._setInstMatrix(batch.mesh, idx, e.x, e.y, 10 + (e.isBoss ? 0.2 : 0), facing, drawSize, drawSize);
+            batch.flashAttr.setX(idx, e.flashTime > 0 ? 1.0 : 0.0);
+            enemyCounts[batchKey] = idx + 1;
+          }
+
+          // Stun box
+          if (e.stunTime > 0 && stunIdx < this.stunBatch.maxCount) {
+            this._setInstMatrix(this.stunBatch.mesh, stunIdx, e.x, e.y - e.radius - 9, 11.2, 0, 16, 6);
+            stunIdx++;
+          }
+
+          // Death Mark ring
+          if (e.deathMarkTime > 0 && markIdx < this.deathMarkBatch.maxCount) {
+            const sz = (e.radius + 5) * 2;
+            this._setInstMatrix(this.deathMarkBatch.mesh, markIdx, e.x, e.y, 11.2, 0, sz, sz);
+            markIdx++;
+          }
+
+          // Mini HP bar above hurt non-boss enemies
+          if (e.hp < e.maxHp && !e.isBoss && hpIdx < this.hpBgBatch.maxCount) {
+            const bw = e.radius * 2;
+            const ratio = Math.max(0, Math.min(1, e.hp / e.maxHp));
+            const by = e.y - e.radius - 10;
+            this._setInstMatrix(this.hpBgBatch.mesh, hpIdx, e.x, by, 11, 0, bw, 4);
+            const fillW = Math.max(0.5, bw * ratio);
+            this._setInstMatrix(this.hpFillBatch.mesh, hpIdx, e.x - (bw - fillW) / 2, by, 11.1, 0, fillW, 4);
+            hpIdx++;
+          }
+        }
+
+        this.telegraphLines.geometry.setDrawRange(0, teleVert);
+        if (teleVert > 0) this.telegraphLines.geometry.attributes.position.needsUpdate = true;
+
+        for (const k of Object.keys(this.enemyBatches)) {
+          const b = this.enemyBatches[k];
+          b.mesh.count = enemyCounts[k];
+          if (b.mesh.count > 0) {
+            b.mesh.instanceMatrix.needsUpdate = true;
+            b.flashAttr.needsUpdate = true;
+          }
+        }
+
+        this.hpBgBatch.mesh.count = hpIdx;
+        this.hpFillBatch.mesh.count = hpIdx;
+        if (hpIdx > 0) {
+          this.hpBgBatch.mesh.instanceMatrix.needsUpdate = true;
+          this.hpFillBatch.mesh.instanceMatrix.needsUpdate = true;
+        }
+        this.stunBatch.mesh.count = stunIdx;
+        if (stunIdx > 0) this.stunBatch.mesh.instanceMatrix.needsUpdate = true;
+        this.deathMarkBatch.mesh.count = markIdx;
+        if (markIdx > 0) this.deathMarkBatch.mesh.instanceMatrix.needsUpdate = true;
+
+        // 8. Player Character, Whirlwind, Barrier & Reticle
+        if (player) {
+          const alpha = player.stealthTime > 0 ? 0.45 : 1.0;
+
+          if (player.whirlwindTime > 0) {
+            const wwSz = 120 * player.meleeRangeMult * 2;
+            this.playerWhirlwindMesh.visible = true;
+            this.playerWhirlwindMesh.position.set(player.x, -player.y, 12);
+            this.playerWhirlwindMesh.scale.set(wwSz, wwSz, 1);
+            this.playerWhirlwindMesh.material.opacity = 0.72 * alpha;
+          } else {
+            this.playerWhirlwindMesh.visible = false;
+          }
+
+          if (player.barrier > 0) {
+            const bSz = (player.radius + 9) * 2;
+            this.playerBarrierMesh.visible = true;
+            this.playerBarrierMesh.position.set(player.x, -player.y, 12.1);
+            this.playerBarrierMesh.scale.set(bSz, bSz, 1);
+            this.playerBarrierMesh.material.opacity = 0.65 * alpha;
+          } else {
+            this.playerBarrierMesh.visible = false;
+          }
+
+          const aimAngle = Math.atan2(player.aimDir.y, player.aimDir.x);
+          const spriteAngle = player.whirlwindTime > 0
+            ? (performance.now() * 0.018) % (Math.PI * 2)
+            : aimAngle;
+
+          const heroId = player.classDef.id;
+          const heroTex = this.textures.hero[heroId];
+          if (heroTex && this.playerHeroMesh.material.map !== heroTex) {
+            this.playerHeroMesh.material.map = heroTex;
+            this.playerHeroMesh.material.color.setHex(0xffffff);
+            this.playerHeroMesh.material.needsUpdate = true;
+          } else if (!heroTex) {
+            this.playerHeroMesh.material.color.set(player.invulnTime > 0.2 ? '#ffffff' : player.classDef.color);
+          }
+
+          this.playerHeroMesh.visible = true;
+          this.playerHeroMesh.position.set(player.x, -player.y, 13);
+          this.playerHeroMesh.rotation.z = -spriteAngle;
+          this.playerHeroMesh.scale.set(68, 68, 1);
+          this.playerHeroMesh.material.opacity = alpha;
+
+          const rx = player.x + Math.cos(aimAngle) * 85;
+          const ry = player.y + Math.sin(aimAngle) * 85;
+          this.aimReticleMesh.visible = true;
+          this.aimReticleMesh.position.set(rx, -ry, 13.1);
+          this.aimReticleMesh.scale.set(13, 13, 1);
+          this.aimReticleMesh.material.opacity = 0.45 * alpha;
+        } else {
+          this.playerWhirlwindMesh.visible = false;
+          this.playerBarrierMesh.visible = false;
+          this.playerHeroMesh.visible = false;
+          this.aimReticleMesh.visible = false;
+        }
+
+        // 9. Animated Melee Slash Arcs (Shader Crescent + Sweeping Blade)
+        for (let i = 0; i < this.slashPool.length; i++) {
+          const item = this.slashPool[i];
+          if (i < slashArcs.length) {
+            const s = slashArcs[i];
+            const progress = Math.min(1, Math.max(0, 1 - s.life / s.maxLife));
+            const eased = 1 - Math.pow(1 - progress, 3);
+            const dir = s.swingDir || 1;
+            const startAng = (-s.arc / 2) * dir;
+            const currentAng = startAng + (s.arc * eased) * dir;
+            const alpha = Math.min(1, (s.life / s.maxLife) * 1.65);
+
+            item.arcMesh.visible = true;
+            item.arcMesh.position.set(s.x, -s.y, 14);
+            item.arcMesh.rotation.z = -s.angle;
+            item.arcMesh.scale.set(s.radius * 2, s.radius * 2, 1);
+            item.arcMesh.material.uniforms.uColor.value.set(s.color);
+            item.arcMesh.material.uniforms.uEdgeColor.value.set(s.weaponType === 'dagger' ? '#fda4af' : '#fef08a');
+            item.arcMesh.material.uniforms.uStartAng.value = startAng;
+            item.arcMesh.material.uniforms.uEndAng.value = currentAng;
+            item.arcMesh.material.uniforms.uAlpha.value = alpha;
+
+            item.bladeMesh.visible = true;
+            item.bladeMesh.position.set(s.x, -s.y, 14.1);
+            item.bladeMesh.rotation.z = -(s.angle + currentAng);
+            const bladeLen = s.radius + 4;
+            item.bladeMesh.scale.set(bladeLen, bladeLen, 1);
+            const targetBladeTex = s.weaponType === 'dagger' ? this.textures.proc.bladeDagger : this.textures.proc.bladeSword;
+            if (item.bladeMesh.material.map !== targetBladeTex) {
+              item.bladeMesh.material.map = targetBladeTex;
+              item.bladeMesh.material.needsUpdate = true;
+            }
+            item.bladeMesh.material.opacity = alpha;
+          } else {
+            item.arcMesh.visible = false;
+            item.bladeMesh.visible = false;
+          }
+        }
+
+        // 10. Chain Lightning Bolts (Dynamic LineSegments)
+        let boltVert = 0;
+        for (const b of lightningBolts) {
+          if (boltVert + 4 > this.maxBoltVerts) break;
+          const midX = (b.x1 + b.x2) / 2 + (Math.random() - 0.5) * 18;
+          const midY = (b.y1 + b.y2) / 2 + (Math.random() - 0.5) * 18;
+          const base = boltVert * 3;
+          this.boltPositions[base] = b.x1;      this.boltPositions[base + 1] = -b.y1;   this.boltPositions[base + 2] = 15;
+          this.boltPositions[base + 3] = midX;  this.boltPositions[base + 4] = -midY;   this.boltPositions[base + 5] = 15;
+          this.boltPositions[base + 6] = midX;  this.boltPositions[base + 7] = -midY;   this.boltPositions[base + 8] = 15;
+          this.boltPositions[base + 9] = b.x2;  this.boltPositions[base + 10] = -b.y2;  this.boltPositions[base + 11] = 15;
+          boltVert += 4;
+        }
+        this.boltLines.geometry.setDrawRange(0, boltVert);
+        if (boltVert > 0) this.boltLines.geometry.attributes.position.needsUpdate = true;
+
+        // 11. Player & Enemy Projectiles (Instanced Batches)
+        const projCounts = {};
+        for (const k of Object.keys(this.projBatches)) projCounts[k] = 0;
+        const orbSpin = (performance.now() * 0.012) % (Math.PI * 2);
+
+        for (const pr of projectiles) {
+          let flightAngle = Math.atan2(pr.vy, pr.vx);
+          let key = 'proj_arrow';
+          let w = 44, h = 22;
+
+          if (pr.type === 'arrow') {
+            key = pr.forceCrit ? 'proj_arrow_crit' : 'proj_arrow';
+            w = pr.forceCrit ? 54 : 44;
+            h = pr.forceCrit ? 27 : 22;
+          } else if (pr.type === 'kunai') {
+            key = 'proj_kunai';
+            w = 38; h = 19;
+          } else if (pr.type === 'shockwave') {
+            key = 'fx_shockwave';
+            w = 64; h = 64;
+          } else if (pr.type === 'orb') {
+            if (pr.element === 0) {
+              key = 'spell_fireball'; w = 46; h = 30;
+            } else if (pr.element === 1) {
+              key = 'spell_frostbolt'; w = 46; h = 30;
+            } else {
+              key = 'spell_lightning_orb';
+              flightAngle += orbSpin;
+              w = 38; h = 38;
+            }
+          }
+
+          const batch = this.projBatches[key];
+          const idx = projCounts[key];
+          if (batch && idx < batch.maxCount) {
+            this._setInstMatrix(batch.mesh, idx, pr.x, pr.y, 16, flightAngle, w, h);
+            projCounts[key] = idx + 1;
+          }
+        }
+
+        const epBatch = this.projBatches.proj_enemy_arrow;
+        for (const ep of enemyProjectiles) {
+          const idx = projCounts.proj_enemy_arrow;
+          if (idx >= epBatch.maxCount) break;
+          const epAngle = Math.atan2(ep.vy, ep.vx);
+          this._setInstMatrix(epBatch.mesh, idx, ep.x, ep.y, 17, epAngle, 44, 22);
+          projCounts.proj_enemy_arrow = idx + 1;
+        }
+
+        for (const k of Object.keys(this.projBatches)) {
+          const b = this.projBatches[k];
+          b.mesh.count = projCounts[k];
+          if (b.mesh.count > 0) b.mesh.instanceMatrix.needsUpdate = true;
+        }
+
+        // 12. Particles (All particles in 1 instanced draw call)
+        let ptIdx = 0;
+        const ptBatch = this.particleBatch;
+        for (const pt of particles) {
+          if (ptIdx >= ptBatch.maxCount) break;
+          const a = Math.max(0, pt.life / pt.maxLife);
+          const sz = pt.radius * 2;
+          this._setInstMatrix(ptBatch.mesh, ptIdx, pt.x, pt.y, 18, 0, sz, sz);
+          this._tmpColor.set(pt.color);
+          ptBatch.colorAttr.setXYZ(ptIdx, this._tmpColor.r, this._tmpColor.g, this._tmpColor.b);
+          ptBatch.alphaAttr.setX(ptIdx, a);
+          ptIdx++;
+        }
+        ptBatch.mesh.count = ptIdx;
+        if (ptIdx > 0) {
+          ptBatch.mesh.instanceMatrix.needsUpdate = true;
+          ptBatch.colorAttr.needsUpdate = true;
+          ptBatch.alphaAttr.needsUpdate = true;
+        }
+
+        // 13. Floating Damage & Status Numbers (Cached GPU text sprites)
+        for (let i = 0; i < this.textPool.length; i++) {
+          const m = this.textPool[i];
+          if (i < floatingTexts.length) {
+            const ft = floatingTexts[i];
+            const entry = this._getTextTextureEntry(ft.text, ft.color, ft.size);
+            if (m.material.map !== entry.tex) {
+              m.material.map = entry.tex;
+              m.material.needsUpdate = true;
+            }
+            m.visible = true;
+            m.position.set(ft.x, -ft.y, 19);
+            m.scale.set(entry.w, entry.h, 1);
+            m.material.opacity = Math.min(1, ft.life * 2.2);
+          } else {
+            m.visible = false;
+          }
+        }
+
+        this.renderer.render(this.scene, this.camera);
+      }
+    }
+
+    threeRenderer = new ArcaneThreeRenderer(canvas);
+
     function drawArena() {
       const nowSec = performance.now() * 0.001;
-
-      // Void Abyss Backdrop (visible beyond arena boundaries or during camera shake)
-      ctx.fillStyle = '#05070d';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      ctx.save();
-      ctx.scale(camera.zoom, camera.zoom);
-      ctx.translate(-camera.x, -camera.y);
-
-      // 1. Pre-Baked Modular SVG Tilemap & Perimeter Battlements (20x14 SVG Tiles + Walls + Center Seal)
-      if (arenaFloorCacheReady && arenaFloorCache) {
-        ctx.drawImage(arenaFloorCache, 0, 0);
-      } else {
-        ctx.fillStyle = '#0e1422';
-        ctx.fillRect(0, 0, ARENA.width, ARENA.height);
+      if (threeRenderer) {
+        threeRenderer.render(nowSec);
       }
-
-      // 2. Ascension Realm Atmosphere & Animated Leyline Conduit Pulses
-      const asc = wave.ascension || 1;
-      const leyColor = asc === 1 ? '#38bdf8' : asc === 2 ? '#f43f5e' : asc === 3 ? '#a855f7' : '#f59e0b';
-      if (asc > 1) {
-        ctx.save();
-        ctx.fillStyle = asc === 2
-          ? 'rgba(225, 29, 72, 0.07)'
-          : asc === 3
-            ? 'rgba(147, 51, 234, 0.08)'
-            : 'rgba(245, 158, 11, 0.08)';
-        ctx.fillRect(0, 0, ARENA.width, ARENA.height);
-        ctx.restore();
-      }
-
-      // Travelling Energy Pulses along the North/South/East/West Leyline Highways into (1000, 700)
-      ctx.save();
-      const pulsePhase = (nowSec * 180) % 700;
-      const cx = ARENA.width / 2;
-      const cy = ARENA.height / 2;
-      ctx.fillStyle = leyColor;
-      ctx.globalAlpha = 0.45 + 0.2 * Math.sin(nowSec * 3.5);
-
-      // West & East Leyline Streams (y = 650 and y = 750)
-      for (const ry of [650, 750]) {
-        const wx = 60 + pulsePhase;
-        const ex = ARENA.width - 60 - pulsePhase;
-        ctx.beginPath();
-        ctx.arc(wx, ry, 5, 0, Math.PI * 2);
-        ctx.arc(ex, ry, 5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      // North & South Leyline Streams (x = 950 and x = 1050)
-      const vPulse = (nowSec * 150) % 520;
-      for (const rx of [950, 1050]) {
-        const ny = 60 + vPulse;
-        const sy = ARENA.height - 60 - vPulse;
-        ctx.beginPath();
-        ctx.arc(rx, ny, 5, 0, Math.PI * 2);
-        ctx.arc(rx, sy, 5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
-
-      // 3. Live Counter-Rotating Celestial Astrolabe Overlay at Arena Center (1000, 700)
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(-nowSec * 0.28);
-      ctx.strokeStyle = leyColor;
-      ctx.globalAlpha = 0.38 + 0.15 * Math.sin(nowSec * 2.2);
-      ctx.lineWidth = 2;
-      ctx.setLineDash([12, 10]);
-      ctx.beginPath();
-      ctx.arc(0, 0, 134, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.rotate(nowSec * 0.65);
-      ctx.strokeStyle = '#fbbf24';
-      ctx.setLineDash([6, 8]);
-      ctx.beginPath();
-      ctx.arc(0, 0, 78, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-
-      // 4. Flickering Perimeter Wall Sconce & Corner Bastion Torchlight Halos
-      ctx.save();
-      const flicker = 0.88 + 0.12 * Math.sin(nowSec * 11.0) * Math.cos(nowSec * 7.3);
-      ctx.fillStyle = 'rgba(251, 191, 36, 0.065)';
-      for (let x = 100; x < ARENA.width; x += 200) {
-        ctx.beginPath();
-        ctx.arc(x, 38, 52 * flicker, 0, Math.PI * 2);
-        ctx.arc(x, ARENA.height - 38, 52 * flicker, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      for (let y = 100; y < ARENA.height; y += 200) {
-        ctx.beginPath();
-        ctx.arc(38, y, 52 * flicker, 0, Math.PI * 2);
-        ctx.arc(ARENA.width - 38, y, 52 * flicker, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
-
-      // 5. Ground Hazards (Singularity, Fire Puddles, Caltrops, Decoys)
-      for (const h of groundHazards) {
-        ctx.save();
-        if (h.type === 'singularity' && WEAPON_IMAGES.spell_singularity && WEAPON_IMAGES.spell_singularity.complete) {
-          ctx.translate(h.x, h.y);
-          ctx.rotate((performance.now() * 0.004) % (Math.PI * 2));
-          const sz = h.radius * 2.1;
-          ctx.drawImage(WEAPON_IMAGES.spell_singularity, -sz / 2, -sz / 2, sz, sz);
-          ctx.restore();
-          continue;
-        }
-        if (h.type === 'fire_puddle') {
-          ctx.fillStyle = 'rgba(249, 115, 22, 0.30)';
-          ctx.strokeStyle = 'rgba(251, 146, 60, 0.75)';
-        } else if (h.type === 'caltrops') {
-          ctx.fillStyle = 'rgba(16, 185, 129, 0.22)';
-          ctx.strokeStyle = 'rgba(52, 211, 153, 0.65)';
-        } else if (h.type === 'singularity') {
-          ctx.fillStyle = 'rgba(56, 189, 248, 0.24)';
-          ctx.strokeStyle = '#38bdf8';
-        } else if (h.type === 'decoy') {
-          ctx.fillStyle = 'rgba(56, 189, 248, 0.35)';
-          ctx.strokeStyle = '#7dd3fc';
-        }
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(h.x, h.y, h.type === 'decoy' ? 22 : h.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-      }
-
-      // 6. Spawn Portal Warning Indicators (Rotating Arcane Summoning Rifts)
-      for (const p of spawnPortals) {
-        const progress = 1 - p.timer / p.maxTimer;
-        const r = 26 * progress + 8;
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        ctx.rotate(nowSec * 3.2);
-        ctx.strokeStyle = 'rgba(244, 63, 94, 0.9)';
-        ctx.fillStyle = 'rgba(168, 85, 247, 0.20)';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.setLineDash([5, 4]);
-        ctx.strokeStyle = '#fda4af';
-        ctx.beginPath();
-        ctx.arc(0, 0, r * 0.68, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.restore();
-      }
-
-      // 7. Faceted XP Crystal Gems
-      for (const g of xpGems) {
-        ctx.save();
-        const colors = { green: '#34d399', blue: '#38bdf8', purple: '#c084fc', boss: '#fbbf24' };
-        const c = colors[g.tier] || '#34d399';
-        const r = g.tier === 'boss' ? 10.5 : g.tier === 'purple' ? 7.5 : 5.8;
-        ctx.fillStyle = c;
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(g.x, g.y - r);
-        ctx.lineTo(g.x + r, g.y);
-        ctx.lineTo(g.x, g.y + r);
-        ctx.lineTo(g.x - r, g.y);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-      }
-
-      // 8. Arena Runic Obelisk Pillars (Rendered with Top-Down SVG Sprite + Live Brazier Pulse)
-      for (const pil of ARENA.pillars) {
-        ctx.save();
-        const pilImg = ENV_IMAGES.pillar_obelisk;
-        if (pilImg && pilImg.complete) {
-          const drawSz = pil.r * 2.95; // 135px to include outer stepped plinth & shadow
-          ctx.drawImage(pilImg, pil.x - drawSz / 2, pil.y - drawSz / 2, drawSz, drawSz);
-
-          // Live flickering arcane brazier halo at pillar crown
-          const glowR = (28 + 5 * Math.sin(nowSec * 5.5 + pil.x)) * (asc > 1 ? 1.15 : 1.0);
-          const grad = ctx.createRadialGradient(pil.x, pil.y, 2, pil.x, pil.y, glowR);
-          grad.addColorStop(0, '#ffffff');
-          grad.addColorStop(0.4, leyColor + '88');
-          grad.addColorStop(1, 'rgba(0,0,0,0)');
-          ctx.fillStyle = grad;
-          ctx.beginPath();
-          ctx.arc(pil.x, pil.y, glowR, 0, Math.PI * 2);
-          ctx.fill();
-        } else {
-          ctx.fillStyle = '#1e293b';
-          ctx.strokeStyle = '#475569';
-          ctx.lineWidth = 4;
-          ctx.beginPath();
-          ctx.arc(pil.x, pil.y, pil.r, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-        }
-        ctx.restore();
-      }
-
-      // Enemies (Rendered with Top-Down SVG Sprites)
-      for (const e of enemies) {
-        ctx.save();
-        // Skeleton Archer & Wraith Telegraph Lines
-        if ((e.type === 'archer' && e.aiState === 'aiming') || (e.type === 'wraith' && e.aiState === 'windup')) {
-          ctx.strokeStyle = 'rgba(248, 113, 113, 0.75)';
-          ctx.setLineDash([6, 6]);
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(e.x, e.y);
-          ctx.lineTo(e.x + Math.cos(e.aimAngle) * 340, e.y + Math.sin(e.aimAngle) * 340);
-          ctx.stroke();
-          ctx.setLineDash([]);
-        }
-
-        const facing = ((e.type === 'archer' && e.aiState === 'aiming') || (e.type === 'wraith' && (e.aiState === 'windup' || e.aiState === 'lunge')))
-          ? e.aimAngle
-          : (player ? Math.atan2(player.y - e.y, player.x - e.x) : 0);
-
-        const monsterImg = MONSTER_IMAGES[e.type] || MONSTER_IMAGES.goblin;
-        if (monsterImg && monsterImg.complete) {
-          ctx.save();
-          ctx.translate(e.x, e.y);
-          ctx.rotate(facing);
-          const drawSize = e.isBoss ? e.radius * 2.8 : e.radius * 3.1;
-          ctx.drawImage(monsterImg, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
-          ctx.restore();
-
-          if (e.flashTime > 0) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
-            ctx.beginPath();
-            ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        } else {
-          ctx.fillStyle = e.flashTime > 0 ? '#ffffff' : e.color;
-          ctx.strokeStyle = e.isBoss ? '#fef08a' : 'rgba(0,0,0,0.6)';
-          ctx.lineWidth = e.isBoss ? 3.5 : 2;
-          ctx.beginPath();
-          ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-        }
-
-        // Status indicators
-        if (e.stunTime > 0) {
-          ctx.strokeStyle = '#fbbf24';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(e.x - 8, e.y - e.radius - 12, 16, 6);
-        }
-        if (e.deathMarkTime > 0) {
-          ctx.strokeStyle = '#f43f5e';
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.arc(e.x, e.y, e.radius + 5, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-
-        // Mini HP bar above hurt enemies
-        if (e.hp < e.maxHp && !e.isBoss) {
-          const bw = e.radius * 2;
-          ctx.fillStyle = 'rgba(0,0,0,0.75)';
-          ctx.fillRect(e.x - bw / 2, e.y - e.radius - 12, bw, 4);
-          ctx.fillStyle = '#ef4444';
-          ctx.fillRect(e.x - bw / 2, e.y - e.radius - 12, bw * (e.hp / e.maxHp), 4);
-        }
-        ctx.restore();
-      }
-
-      // Player Character (Rendered with Top-Down SVG Sprite)
-      if (player) {
-        ctx.save();
-        if (player.stealthTime > 0) ctx.globalAlpha = 0.45;
-
-        // Whirlwind spin ring
-        if (player.whirlwindTime > 0) {
-          ctx.strokeStyle = '#fbbf24';
-          ctx.fillStyle = 'rgba(245, 158, 11, 0.16)';
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.arc(player.x, player.y, 120 * player.meleeRangeMult, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-        }
-
-        // Arcane Barrier Halo
-        if (player.barrier > 0) {
-          ctx.strokeStyle = 'rgba(56, 189, 248, 0.8)';
-          ctx.fillStyle = 'rgba(56, 189, 248, 0.10)';
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.arc(player.x, player.y, player.radius + 9, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-        }
-
-        const aimAngle = Math.atan2(player.aimDir.y, player.aimDir.x);
-        const spriteAngle = player.whirlwindTime > 0
-          ? (performance.now() * 0.018) % (Math.PI * 2)
-          : aimAngle;
-
-        const heroImg = HERO_IMAGES[player.classDef.id];
-        if (heroImg && heroImg.complete) {
-          ctx.save();
-          ctx.translate(player.x, player.y);
-          ctx.rotate(spriteAngle);
-          const spriteSize = 68;
-          ctx.drawImage(heroImg, -spriteSize / 2, -spriteSize / 2, spriteSize, spriteSize);
-          ctx.restore();
-        } else {
-          ctx.fillStyle = player.invulnTime > 0.2 ? '#ffffff' : player.classDef.color;
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-        }
-
-        // Subtle Aim Reticle at 90px
-        const rx = player.x + Math.cos(aimAngle) * 85;
-        const ry = player.y + Math.sin(aimAngle) * 85;
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(rx, ry, 6, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.restore();
-      }
-
-      // Animated Melee Slash Arcs (Sweeps rapidly across hitbox sector)
-      for (const s of slashArcs) {
-        ctx.save();
-        ctx.translate(s.x, s.y);
-        ctx.rotate(s.angle);
-
-        const progress = Math.min(1, Math.max(0, 1 - s.life / s.maxLife));
-        // Cubic ease-out for fast, snappy weapon sweep
-        const eased = 1 - Math.pow(1 - progress, 3);
-        const dir = s.swingDir || 1;
-        const startAng = (-s.arc / 2) * dir;
-        const currentAng = startAng + (s.arc * eased) * dir;
-        const alpha = Math.min(1, (s.life / s.maxLife) * 1.65);
-
-        ctx.globalAlpha = alpha;
-
-        // Swept Crescent Motion Trail matching hitbox radius & arc
-        const grad = ctx.createRadialGradient(0, 0, s.radius * 0.35, 0, 0, s.radius);
-        grad.addColorStop(0, 'rgba(0,0,0,0)');
-        grad.addColorStop(0.6, s.color + '66');
-        grad.addColorStop(1, s.color + 'dd');
-
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(0, 0, s.radius, startAng, currentAng, dir < 0);
-        ctx.arc(0, 0, s.radius * 0.42, currentAng, startAng, dir > 0);
-        ctx.closePath();
-        ctx.fill();
-
-        // Outer Razor Edge Highlight
-        ctx.strokeStyle = s.weaponType === 'dagger' ? '#fda4af' : '#fef08a';
-        ctx.lineWidth = s.weaponType === 'dagger' ? 3.5 : 5;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.arc(0, 0, s.radius - 2, startAng, currentAng, dir < 0);
-        ctx.stroke();
-
-        // Physical Sweeping Blade at currentAng
-        ctx.save();
-        ctx.rotate(currentAng);
-        if (s.weaponType === 'dagger') {
-          ctx.fillStyle = '#f43f5e';
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1.2;
-          ctx.beginPath();
-          ctx.moveTo(14, -3);
-          ctx.lineTo(s.radius, 0);
-          ctx.lineTo(14, 3);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-        } else {
-          // Broadsword Hilt, Crossguard & Runed Blade
-          ctx.fillStyle = '#78350f';
-          ctx.fillRect(10, -2.5, 11, 5);
-          ctx.fillStyle = '#f59e0b';
-          ctx.fillRect(20, -10, 4.5, 20);
-          ctx.fillStyle = '#f8fafc';
-          ctx.strokeStyle = '#f59e0b';
-          ctx.lineWidth = 1.6;
-          ctx.beginPath();
-          ctx.moveTo(24.5, -5.5);
-          ctx.lineTo(s.radius - 8, -3.5);
-          ctx.lineTo(s.radius + 4, 0);
-          ctx.lineTo(s.radius - 8, 3.5);
-          ctx.lineTo(24.5, 5.5);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-        }
-        ctx.restore();
-
-        ctx.restore();
-      }
-
-      // Chain Lightning Bolts
-      for (const b of lightningBolts) {
-        ctx.save();
-        ctx.strokeStyle = '#e879f9';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(b.x1, b.y1);
-        ctx.lineTo((b.x1 + b.x2) / 2 + (Math.random() - 0.5) * 18, (b.y1 + b.y2) / 2 + (Math.random() - 0.5) * 18);
-        ctx.lineTo(b.x2, b.y2);
-        ctx.stroke();
-        ctx.restore();
-      }
-
-      // Player Projectiles (Directional Arrows, Kunai, Shockwaves & Spells)
-      for (const pr of projectiles) {
-        ctx.save();
-        const flightAngle = Math.atan2(pr.vy, pr.vx);
-        ctx.translate(pr.x, pr.y);
-        ctx.rotate(flightAngle);
-
-        let projImg = null;
-        let w = 44, h = 22;
-        if (pr.type === 'arrow') {
-          projImg = pr.forceCrit ? WEAPON_IMAGES.proj_arrow_crit : WEAPON_IMAGES.proj_arrow;
-          w = pr.forceCrit ? 54 : 44;
-          h = pr.forceCrit ? 27 : 22;
-        } else if (pr.type === 'kunai') {
-          projImg = WEAPON_IMAGES.proj_kunai;
-          w = 38;
-          h = 19;
-        } else if (pr.type === 'shockwave') {
-          projImg = WEAPON_IMAGES.fx_shockwave;
-          w = 64;
-          h = 64;
-        } else if (pr.type === 'orb') {
-          if (pr.element === 0) {
-            projImg = WEAPON_IMAGES.spell_fireball;
-            w = 46;
-            h = 30;
-          } else if (pr.element === 1) {
-            projImg = WEAPON_IMAGES.spell_frostbolt;
-            w = 46;
-            h = 30;
-          } else {
-            projImg = WEAPON_IMAGES.spell_lightning_orb;
-            ctx.rotate((performance.now() * 0.012) % (Math.PI * 2));
-            w = 38;
-            h = 38;
-          }
-        }
-
-        if (projImg && projImg.complete) {
-          ctx.drawImage(projImg, -w / 2, -h / 2, w, h);
-        } else {
-          ctx.fillStyle = pr.color;
-          ctx.beginPath();
-          ctx.arc(0, 0, pr.radius, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.restore();
-      }
-
-      // Enemy Projectiles (Directional Bone Arrows & Boss Barrages)
-      for (const ep of enemyProjectiles) {
-        ctx.save();
-        const epAngle = Math.atan2(ep.vy, ep.vx);
-        ctx.translate(ep.x, ep.y);
-        ctx.rotate(epAngle);
-
-        if (WEAPON_IMAGES.proj_enemy_arrow && WEAPON_IMAGES.proj_enemy_arrow.complete) {
-          ctx.drawImage(WEAPON_IMAGES.proj_enemy_arrow, -22, -11, 44, 22);
-        } else {
-          ctx.fillStyle = ep.color;
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.arc(0, 0, ep.radius, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-        }
-        ctx.restore();
-      }
-
-      // Particles
-      for (const pt of particles) {
-        ctx.save();
-        ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife);
-        ctx.fillStyle = pt.color;
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, pt.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-
-      // Floating Damage & Status Numbers
-      for (const ft of floatingTexts) {
-        ctx.save();
-        ctx.font = `bold ${ft.size}px ui-monospace, SFMono-Regular, monospace`;
-        ctx.fillStyle = ft.color;
-        ctx.textAlign = 'center';
-        ctx.fillText(ft.text, ft.x, ft.y);
-        ctx.restore();
-      }
-
-      ctx.restore();
     }
 
     // =========================================================================
