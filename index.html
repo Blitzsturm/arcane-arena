@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0e14" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="manifest" href="./manifest.webmanifest" />
@@ -399,10 +400,16 @@
         <div class="hidden sm:block text-xs text-gray-400">
           Tip: HUD &amp; Arena Viewport automatically scale to fit mobile, tablet, and desktop screens.
         </div>
-        <button id="btnStartRun" class="w-full sm:w-auto px-6 py-2.5 sm:py-3 rounded-xl font-bold text-sm bg-amber-500 hover:bg-amber-400 text-gray-950 shadow-lg transition transform active:scale-95 cursor-pointer">
-          ▶ Enter the Arena [Enter / Space / Tap]
-        </button>
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+          <button id="btnExitFromSelect" type="button" class="w-full sm:w-auto px-4 py-2.5 sm:py-3 rounded-xl font-bold text-sm bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-400/35 transition transform active:scale-95 cursor-pointer">
+            ✕ Exit Game
+          </button>
+          <button id="btnStartRun" class="w-full sm:w-auto px-6 py-2.5 sm:py-3 rounded-xl font-bold text-sm bg-amber-500 hover:bg-amber-400 text-gray-950 shadow-lg transition transform active:scale-95 cursor-pointer">
+            ▶ Enter the Arena [Enter / Space / Tap]
+          </button>
+        </div>
       </div>
+      <div id="exitNoticeSelect" class="hidden mt-2.5 text-center text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-400/25 rounded-lg px-3 py-1.5"></div>
     </div>
   </div>
 
@@ -495,14 +502,18 @@
           </button>
         </div>
 
-        <div class="grid grid-cols-2 gap-2 pt-1 border-t border-white/10">
-          <button id="btnRestartFromPause" type="button" class="py-2 px-3 rounded-xl font-bold text-xs bg-white/10 hover:bg-white/20 text-amber-300 border border-white/15 transition cursor-pointer">
+        <div class="grid grid-cols-3 gap-2 pt-1 border-t border-white/10">
+          <button id="btnRestartFromPause" type="button" class="py-2 px-2 rounded-xl font-bold text-[11px] sm:text-xs bg-white/10 hover:bg-white/20 text-amber-300 border border-white/15 transition cursor-pointer">
             Restart Run
           </button>
-          <button id="btnChangeClassFromPause" type="button" class="py-2 px-3 rounded-xl font-bold text-xs bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-400/30 transition cursor-pointer">
+          <button id="btnChangeClassFromPause" type="button" class="py-2 px-2 rounded-xl font-bold text-[11px] sm:text-xs bg-white/10 hover:bg-white/20 text-gray-200 border border-white/15 transition cursor-pointer">
             Change Hero
           </button>
+          <button id="btnExitFromPause" type="button" class="py-2 px-2 rounded-xl font-bold text-[11px] sm:text-xs bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-400/35 transition cursor-pointer">
+            ✕ Exit Game
+          </button>
         </div>
+        <div id="exitNoticePause" class="hidden text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-400/25 rounded-lg px-3 py-1.5"></div>
       </div>
     </div>
   </div>
@@ -4017,6 +4028,8 @@
     function startNewRun() {
       sfx.init();
       sfx.levelUp();
+      hideExitNotices();
+      requestAppFullscreen();
       const cls = HERO_CLASSES[selectedClassIndex];
       player = createPlayer(cls);
       enemies = [];
@@ -6170,6 +6183,7 @@
         <div class="flex justify-between"><span class="text-gray-400">Damage Dealt:</span> <span class="text-white font-bold">${wave.totalDamageDealt.toLocaleString()}</span></div>
       `;
 
+      hideExitNotices();
       document.getElementById('screenPause').classList.remove('hidden');
       const btnTop = document.getElementById('btnPauseTop');
       const btnBot = document.getElementById('btnPauseBottom');
@@ -6210,6 +6224,7 @@
       document.getElementById('hudOverlay').classList.add('hidden');
       document.getElementById('hudBottomOverlay').classList.add('hidden');
       document.getElementById('touchControlsOverlay').classList.add('hidden');
+      hideExitNotices();
       document.getElementById('screenSelect').classList.remove('hidden');
       const btnTop = document.getElementById('btnPauseTop');
       const btnBot = document.getElementById('btnPauseBottom');
@@ -6493,6 +6508,96 @@
     }
 
     requestAnimationFrame(mainLoop);
+
+    // =========================================================================
+    // 12.5. FULLSCREEN PWA MANAGEMENT & EXIT / CLOSE HANDLERS
+    // =========================================================================
+    let autoFullscreenSuppressed = false;
+    let hasEnteredDomFullscreen = false;
+
+    function isPwaFullscreenMode() {
+      return Boolean(window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches);
+    }
+
+    function getFullscreenElement() {
+      return document.fullscreenElement || document.webkitFullscreenElement || null;
+    }
+
+    function hideExitNotices() {
+      const n1 = document.getElementById('exitNoticeSelect');
+      const n2 = document.getElementById('exitNoticePause');
+      if (n1) n1.classList.add('hidden');
+      if (n2) n2.classList.add('hidden');
+    }
+
+    function requestAppFullscreen() {
+      if (autoFullscreenSuppressed || getFullscreenElement() || isPwaFullscreenMode()) return;
+      const el = document.documentElement;
+      const req = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (typeof req === 'function') {
+        try {
+          const res = req.call(el);
+          if (res && typeof res.catch === 'function') res.catch(() => {});
+        } catch (_) {}
+      }
+    }
+
+    async function exitAppFullscreen() {
+      if (!getFullscreenElement()) return;
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (typeof exit === 'function') {
+        try {
+          await exit.call(document);
+        } catch (_) {}
+      }
+    }
+
+    async function exitGameApp(source) {
+      autoFullscreenSuppressed = true;
+      musicPlayer.update(false, false);
+      await exitAppFullscreen();
+
+      try {
+        window.close();
+      } catch (_) {}
+
+      setTimeout(() => {
+        if (!window.closed) {
+          const noticeId = source === 'pause' ? 'exitNoticePause' : 'exitNoticeSelect';
+          const notice = document.getElementById(noticeId);
+          if (notice) {
+            notice.textContent = 'Exited fullscreen. Close this browser tab or window to finish exiting.';
+            notice.classList.remove('hidden');
+          }
+        }
+      }, 200);
+    }
+
+    function handleFullscreenChange() {
+      if (getFullscreenElement()) {
+        hasEnteredDomFullscreen = true;
+      } else if (hasEnteredDomFullscreen) {
+        autoFullscreenSuppressed = true;
+      }
+    }
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+
+    function handleInitialFullscreenGesture(e) {
+      if (autoFullscreenSuppressed || getFullscreenElement() || isPwaFullscreenMode()) return;
+      if (e.target && typeof e.target.closest === 'function' && e.target.closest('#btnExitFromSelect, #btnExitFromPause')) {
+        return;
+      }
+      if (e.type === 'keydown' && e.code === 'Escape') return;
+      requestAppFullscreen();
+    }
+
+    window.addEventListener('pointerdown', handleInitialFullscreenGesture, { passive: true });
+    window.addEventListener('keydown', handleInitialFullscreenGesture);
+
+    document.getElementById('btnExitFromSelect').addEventListener('click', () => exitGameApp('select'));
+    document.getElementById('btnExitFromPause').addEventListener('click', () => exitGameApp('pause'));
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {

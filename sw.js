@@ -1,4 +1,4 @@
-const CACHE_NAME = 'arcane-arena-v1';
+const CACHE_NAME = 'arcane-arena-v2';
 const PRECACHE_URLS = [
   './',
   './index.html',
