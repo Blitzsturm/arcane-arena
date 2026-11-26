@@ -6,7 +6,7 @@ const PRECACHE_URLS = [
   './three.min.js',
   './manifest.webmanifest',
   './assets/icon.svg',
-  './music/The_Knight_s_Rapid_Ascent.m4a',
+  './music/The_Last_Gatekeeper.m4a',
   './music/Siege_of_the_Iron_Keep.m4a'
 ];
 
